@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Ops Console{% endblock %} — India Data Platform</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+{% if request.session.get('admin') %}
+<nav>
+  <a class="brand" href="/">India Data Platform</a>
+  <a href="/" class="{{ 'on' if request.url.path == '/' }}">Overview</a>
+  <a href="/alerts" class="{{ 'on' if request.url.path.startswith('/alerts') }}">Alerts &amp; jobs</a>
+  <a href="/engines" class="{{ 'on' if request.url.path.startswith('/engines') }}">Engines</a>
+  <a href="/server" class="{{ 'on' if request.url.path.startswith('/server') }}">Server</a>
+  <a href="/decisions" class="{{ 'on' if request.url.path.startswith('/decisions') }}">Decisions</a>
+  <a href="/open-items" class="{{ 'on' if request.url.path.startswith('/open-items') }}">Open items</a>
+  <form method="post" action="/logout" class="right"><button class="link">Sign out</button></form>
+</nav>
+{% endif %}
+<main>{% block body %}{% endblock %}</main>
+</body>
+</html>

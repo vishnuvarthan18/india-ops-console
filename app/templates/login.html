@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Sign in{% endblock %}
+{% block body %}
+<div class="login">
+  <h1>India Data Platform</h1>
+  <p class="muted">Ops console</p>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  <form method="post" action="/login">
+    <label>Username<input name="username" autocomplete="username" autofocus required></label>
+    <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+    <button type="submit">Sign in</button>
+  </form>
+</div>
+{% endblock %}

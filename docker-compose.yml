@@ -1,0 +1,41 @@
+# Ops console — private admin web app.
+#
+# Joins the existing core-infra network rather than standing up its own
+# Postgres: it reads the same database the engines write to. The published
+# port binds to 127.0.0.1 for the same reason core-infra's do (DECISIONS.md
+# D-2: Docker's iptables rules are evaluated before ufw's INPUT chain, so a
+# 0.0.0.0 bind is internet-reachable even with ufw denying everything).
+# Reach it from the Mac over an SSH tunnel:
+#   ssh -L 8010:127.0.0.1:8010 ubuntu@40.160.137.239
+
+name: ops-console
+
+services:
+  ops-console:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: india-ops-console:latest
+    container_name: ops-console
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
+      METRICS_FILE: /var/ops-metrics/metrics.json
+      REPOS_DIR: /repos
+    volumes:
+      # Written by the host metrics collector timer, read here. Read-only:
+      # the console displays metrics, it never produces them.
+      - /var/ops-metrics:/var/ops-metrics:ro
+      # The repo checkouts, for rendering DECISIONS.md. Read-only by design —
+      # this app must never be able to modify source.
+      - ${REPOS_HOST_DIR:-/home/ubuntu}:/repos:ro
+    ports:
+      - "127.0.0.1:${OPS_CONSOLE_HOST_PORT:-8010}:8010"
+    networks:
+      - core
+
+networks:
+  core:
+    external: true
+    name: core-infra_default

@@ -1,0 +1,13 @@
+[Unit]
+Description=Collect host metrics for the ops console every 10 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=10min
+# The du calls are the slow part; jitter keeps them off the same second as
+# the harvest timers.
+RandomizedDelaySec=60
+Persistent=true
+
+[Install]
+WantedBy=timers.target

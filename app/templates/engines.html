@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Engines{% endblock %}
+{% block body %}
+<header class="page"><h1>Engines</h1></header>
+<section class="cards">
+{% for e in engines %}
+  <a class="card" href="/engines/{{ e.key }}">
+    <h3>{{ e.name }}</h3>
+    <p class="muted small">{{ e.description or '' }}</p>
+    <div class="kv">
+      <span><b>{{ "{:,}".format(e.entities) }}</b> entities</span>
+      <span><b>{{ "{:,}".format(e.facts) }}</b> facts</span>
+      <span><b>{{ e.sources_active }}/{{ e.sources }}</b> sources active</span>
+    </div>
+    <p class="muted small">
+      {% if e.last_run_at %}Last run <span class="pill {{ e.last_run_status }}">{{ e.last_run_status }}</span>
+        {{ e.last_run_at.strftime('%Y-%m-%d %H:%M') }}
+      {% else %}<span class="tag warn">never run</span>{% endif %}
+    </p>
+  </a>
+{% endfor %}
+</section>
+{% endblock %}

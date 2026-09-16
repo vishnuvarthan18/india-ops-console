@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Open items{% endblock %}
+{% block body %}
+<header class="page"><h1>Open items</h1></header>
+<p class="muted small">Tick things off here instead of hand-editing a project doc.</p>
+
+{% for group, label in [('needs_user', 'Only you can do these'), ('decision', 'Decisions to make'), ('dev', 'Development work')] %}
+  {% set rows = items | selectattr('category', 'equalto', group) | list %}
+  {% if rows %}
+  <section>
+    <h2>{{ label }}</h2>
+    <table>
+      <thead><tr><th>Item</th><th>Blocks</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+      {% for i in rows %}
+        <tr class="{{ 'done-row' if i.status in ('done', 'dropped') }}">
+          <td><b>{{ i.title }}</b>
+            {% if i.detail %}<div class="muted small">{{ i.detail }}</div>{% endif %}</td>
+          <td class="muted small">{{ i.blocks or '—' }}</td>
+          <td><span class="pill {{ 'success' if i.status == 'done' else ('running' if i.status == 'in_progress' else 'muted-pill') }}">{{ i.status }}</span></td>
+          <td>
+            <form method="post" action="/open-items/{{ i.id }}/status" class="inline">
+              <select name="status_value" onchange="this.form.submit()">
+                {% for s in ['open', 'in_progress', 'done', 'dropped'] %}
+                  <option value="{{ s }}" {{ 'selected' if i.status == s }}>{{ s }}</option>
+                {% endfor %}
+              </select>
+              <noscript><button type="submit">Set</button></noscript>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+{% endfor %}
+{% endblock %}

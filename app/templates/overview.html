@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Overview{% endblock %}
+{% block body %}
+<header class="page">
+  <h1>Overview</h1>
+  <span class="light {{ light }}">
+    {% if light == 'green' %}All clear{% elif light == 'amber' %}Needs a look{% else %}Something is broken{% endif %}
+  </span>
+</header>
+
+<section class="tiles">
+  <div class="tile"><span class="n">{{ "{:,}".format(totals.entities or 0) }}</span><span class="l">Entities</span></div>
+  <div class="tile"><span class="n">{{ "{:,}".format(totals.facts or 0) }}</span><span class="l">Facts</span></div>
+  <div class="tile"><span class="n">{{ "{:,}".format(totals.taxa or 0) }}</span><span class="l">Taxa</span></div>
+  <div class="tile"><span class="n">{{ totals.engines_with_data or 0 }}<span class="of">/{{ totals.engines or 0 }}</span></span><span class="l">Engines with data</span></div>
+  <div class="tile"><span class="n">{{ totals.sources_active or 0 }}<span class="of">/{{ totals.sources or 0 }}</span></span><span class="l">Active sources</span></div>
+</section>
+
+<section>
+  <h2>Alerts</h2>
+  <div class="tiles">
+    <a class="tile {{ 'bad' if counts.heartbeat_alerts }}" href="/alerts">
+      <span class="n">{{ counts.heartbeat_alerts or 0 }}</span><span class="l">Job alerts</span></a>
+    <a class="tile {{ 'bad' if counts.empty_successful_runs }}" href="/alerts">
+      <span class="n">{{ counts.empty_successful_runs or 0 }}</span><span class="l">Ran but collected nothing</span></a>
+    <a class="tile {{ 'warn' if counts.stale_sources }}" href="/alerts">
+      <span class="n">{{ counts.stale_sources or 0 }}</span><span class="l">Stale sources</span></a>
+    <a class="tile {{ 'warn' if counts.open_rejections }}" href="/alerts">
+      <span class="n">{{ counts.open_rejections or 0 }}</span><span class="l">Unreplayed rejections</span></a>
+  </div>
+  <p class="muted small">A job that finishes successfully while accepting zero records is treated as
+  seriously as a hard failure — it is the failure mode that hides.</p>
+</section>
+
+<section>
+  <h2>Facts written, last 30 days</h2>
+  {% set peak = (growth | map(attribute='facts') | max) or 1 %}
+  <div class="spark">
+    {% for d in growth %}
+      <span class="bar" style="height:{{ (d.facts / peak * 100) | round(1) }}%"
+            title="{{ d.day }}: {{ '{:,}'.format(d.facts) }} facts"></span>
+    {% endfor %}
+  </div>
+  <p class="muted small">Peak {{ "{:,}".format(peak) }}/day. A flat line here means the jobs are running but bringing nothing home.</p>
+</section>
+
+<section>
+  <h2>Engines</h2>
+  <table>
+    <thead><tr><th>Engine</th><th class="r">Entities</th><th class="r">Facts</th><th class="r">Sources</th><th>Last run</th></tr></thead>
+    <tbody>
+    {% for e in engines %}
+      <tr>
+        <td><a href="/engines/{{ e.key }}">{{ e.name }}</a></td>
+        <td class="r">{{ "{:,}".format(e.entities) }}</td>
+        <td class="r">{{ "{:,}".format(e.facts) }}</td>
+        <td class="r">{{ e.sources_active }}/{{ e.sources }}</td>
+        <td>{% if e.last_run_at %}<span class="pill {{ e.last_run_status }}">{{ e.last_run_status }}</span>
+            {{ e.last_run_at.strftime('%Y-%m-%d %H:%M') }}{% else %}<span class="muted">never</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Recent runs</h2>
+  <table>
+    <thead><tr><th>Source</th><th>Engine</th><th>Status</th><th class="r">Seen</th><th class="r">Accepted</th><th class="r">Took</th><th>Finished</th></tr></thead>
+    <tbody>
+    {% for r in runs %}
+      <tr>
+        <td>{{ r.source_key }}</td>
+        <td class="muted">{{ r.engine_key }}</td>
+        <td><span class="pill {{ r.status }}">{{ r.status }}</span></td>
+        <td class="r">{{ "{:,}".format(r.records_seen) }}</td>
+        <td class="r {{ 'bad-text' if r.status == 'success' and r.records_accepted == 0 }}">{{ "{:,}".format(r.records_accepted) }}</td>
+        <td class="r muted">{% if r.duration_s %}{{ r.duration_s | round | int }}s{% else %}—{% endif %}</td>
+        <td class="muted">{% if r.finished_at %}{{ r.finished_at.strftime('%Y-%m-%d %H:%M') }}{% else %}running{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

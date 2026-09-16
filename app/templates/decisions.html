@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Decisions{% endblock %}
+{% block body %}
+<header class="page"><h1>Decisions log</h1></header>
+
+<nav class="tabs">
+  {% for r in repos %}
+    <a href="/decisions/{{ r }}" class="{{ 'on' if doc and doc.repo == r }}">{{ r }}</a>
+  {% endfor %}
+</nav>
+
+{% if not repos %}
+  <p class="error">No DECISIONS.md found under the mounted repos directory.</p>
+  <p class="muted small">Check that <code>REPOS_HOST_DIR</code> in <code>.env</code> points at the
+  directory holding the repo checkouts on the VPS.</p>
+{% elif doc %}
+  <p class="muted small">{{ doc.decision_count }} numbered decisions · {{ doc.path }}</p>
+  <form method="get" class="search">
+    <input name="q" value="{{ q }}" placeholder="Search this log…" autofocus>
+    <button type="submit">Search</button>
+  </form>
+
+  {% if hits is not none %}
+    <h2>{{ hits | length }} matching line{{ '' if hits|length == 1 else 's' }} for “{{ q }}”</h2>
+    {% if hits %}
+    <table>
+      <thead><tr><th class="r">Line</th><th>Text</th></tr></thead>
+      <tbody>
+      {% for n, line in hits %}
+        <tr><td class="r muted">{{ n }}</td><td class="mono">{{ line }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  {% else %}
+    <pre class="doc">{{ doc.text }}</pre>
+  {% endif %}
+{% else %}
+  <p class="muted">Pick a repo above.</p>
+{% endif %}
+{% endblock %}

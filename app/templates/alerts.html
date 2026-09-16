@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Alerts &amp; jobs{% endblock %}
+{% block body %}
+<header class="page"><h1>Alerts &amp; jobs</h1></header>
+
+<section>
+  <h2>All jobs</h2>
+  <p class="muted small">Each job's tolerated silence comes from its declared cadence, not a flat
+  36-hour rule. A monthly job is not late until it is genuinely late.</p>
+  <table>
+    <thead><tr><th>Job</th><th>Cadence</th><th>Last ping</th><th>Status</th><th>Silent for</th><th>Tolerance</th><th>Alert</th></tr></thead>
+    <tbody>
+    {% for j in jobs %}
+      <tr class="{{ 'row-bad' if j.is_alerting }}">
+        <td>{{ j.job_key }}</td>
+        <td class="muted">{{ j.cadence or '—' }}{% if j.window_source == 'override' %} <span class="tag">override</span>{% elif j.window_source == 'legacy_default' %} <span class="tag warn">undeclared</span>{% endif %}</td>
+        <td class="muted">{% if j.last_ping_at %}{{ j.last_ping_at.strftime('%Y-%m-%d %H:%M') }}{% else %}never{% endif %}</td>
+        <td>{% if j.last_status %}<span class="pill {{ j.last_status }}">{{ j.last_status }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td class="muted">{{ j.silence | string | truncate(16, true, '') if j.silence else '—' }}</td>
+        <td class="muted">{{ j.effective_silence_after }}</td>
+        <td>{% if j.is_alerting %}<span class="pill failed">{{ j.alert_reason }}</span>{% else %}<span class="pill success">ok</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Ran but collected nothing <span class="muted small">(last 30 days)</span></h2>
+  {% if alerts.empty_successful_runs %}
+  <table>
+    <thead><tr><th>Source</th><th class="r">Seen</th><th class="r">Accepted</th><th>Finished</th></tr></thead>
+    <tbody>
+    {% for r in alerts.empty_successful_runs %}
+      <tr><td>{{ r.source_key }}</td><td class="r">{{ r.records_seen }}</td>
+          <td class="r bad-text">{{ r.records_accepted }}</td>
+          <td class="muted">{{ r.finished_at.strftime('%Y-%m-%d %H:%M') }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="ok">None. Every successful run brought data back.</p>{% endif %}
+</section>
+
+<section>
+  <h2>Stale sources</h2>
+  <p class="muted small">Past their absolute staleness ceiling — a check that does not depend on the
+  scheduler being correct.</p>
+  {% if alerts.stale_sources %}
+  <table>
+    <thead><tr><th>Source</th><th>Engine</th><th>Tier</th><th>Last success</th><th>Age</th></tr></thead>
+    <tbody>
+    {% for s in alerts.stale_sources %}
+      <tr><td>{{ s.key }}</td><td class="muted">{{ s.engine }}</td><td class="muted">{{ s.schedule_tier }}</td>
+          <td class="muted">{% if s.last_success %}{{ s.last_success.strftime('%Y-%m-%d') }}{% else %}never{% endif %}</td>
+          <td>{{ s.age or '—' }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="ok">None.</p>{% endif %}
+</section>
+
+<section>
+  <h2>Unreplayed rejections</h2>
+  {% if alerts.open_rejections %}
+  <table>
+    <thead><tr><th>Reason</th><th class="r">Count</th><th>Latest</th></tr></thead>
+    <tbody>
+    {% for r in alerts.open_rejections %}
+      <tr><td>{{ r.reason_code }}</td><td class="r">{{ r.n }}</td>
+          <td class="muted">{{ r.latest.strftime('%Y-%m-%d %H:%M') }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="ok">None.</p>{% endif %}
+</section>
+{% endblock %}

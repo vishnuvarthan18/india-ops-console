@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Server{% endblock %}
+{% block body %}
+<header class="page"><h1>Server &amp; infrastructure</h1></header>
+
+{% if not snapshot.available %}
+  <p class="error">Host metrics unavailable: {{ snapshot.error }}</p>
+  <p class="muted small">Install <code>ops-metrics.timer</code> on the VPS — see the console's README.
+  Database figures below are read directly and are unaffected.</p>
+{% else %}
+<p class="muted small">Collected {{ snapshot.collected_at }} on {{ snapshot.hostname }} · uptime {{ snapshot.uptime }}</p>
+
+<section class="tiles">
+  <div class="tile"><span class="n">{{ snapshot.disk.use_percent }}%</span><span class="l">Disk used</span>
+    <span class="muted small">{{ snapshot.disk.used }} of {{ snapshot.disk.size }}</span></div>
+  <div class="tile"><span class="n">{{ snapshot.memory.use_percent }}%</span><span class="l">Memory</span>
+    <span class="muted small">{{ snapshot.memory.used_mb }} / {{ snapshot.memory.total_mb }} MB</span></div>
+  <div class="tile"><span class="n">{{ snapshot.load['1m'] }}</span><span class="l">Load (1m)</span>
+    <span class="muted small">{{ snapshot.cpu_count }} vCPU</span></div>
+  <div class="tile"><span class="n">{{ db.pretty or '—' }}</span><span class="l">Database size</span></div>
+</section>
+
+<section>
+  <h2>What is using the disk</h2>
+  <table>
+    <thead><tr><th>Component</th><th class="r">Size</th></tr></thead>
+    <tbody>
+    {% for c in snapshot.disk.breakdown or [] %}
+      <tr><td>{{ c.name }}</td><td class="r">{{ c.size }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Services</h2>
+  <table>
+    <thead><tr><th>Service</th><th>State</th><th class="r">Memory</th></tr></thead>
+    <tbody>
+    {% for c in snapshot.containers or [] %}
+      <tr><td>{{ c.name }}</td>
+          <td><span class="pill {{ 'success' if 'healthy' in (c.status or '') or c.state == 'running' else 'failed' }}">{{ c.state }}</span>
+              <span class="muted small">{{ c.status }}</span></td>
+          <td class="r muted">{{ c.mem or '—' }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Backups</h2>
+  {% if snapshot.backup %}
+    <p>Last backup <b>{{ snapshot.backup.latest or 'none found' }}</b>
+       {% if snapshot.backup.age_hours is not none %}
+         <span class="pill {{ 'success' if snapshot.backup.age_hours < 36 else 'failed' }}">
+           {{ snapshot.backup.age_hours }}h ago</span>
+       {% endif %}
+       <span class="muted small">· {{ snapshot.backup.count }} kept · {{ snapshot.backup.total_size }}</span></p>
+  {% else %}<p class="muted">No backup information in this snapshot.</p>{% endif %}
+</section>
+{% endif %}
+
+<section>
+  <h2>Largest tables</h2>
+  <table>
+    <thead><tr><th>Table</th><th class="r">Size</th><th class="r">Approx rows</th></tr></thead>
+    <tbody>
+    {% for t in tables %}
+      <tr><td>{{ t.table_name }}</td><td class="r">{{ t.pretty }}</td>
+          <td class="r muted">{{ "{:,}".format(t.approx_rows) if t.approx_rows and t.approx_rows > 0 else '—' }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

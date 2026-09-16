@@ -1,0 +1,13 @@
+[Unit]
+Description=Collect host metrics for the ops console
+Documentation=file:///home/ubuntu/india-ops-console/README.md
+
+[Service]
+Type=oneshot
+# Needs root for du on Docker volumes and for docker ps. This is the
+# privileged half of the metrics path, deliberately kept out of the web app.
+User=root
+Environment=OUT_DIR=/var/ops-metrics
+Environment=BACKUP_DIR=/home/ubuntu/backups
+ExecStart=/home/ubuntu/india-ops-console/ops/scripts/collect_metrics.sh
+TimeoutStartSec=180

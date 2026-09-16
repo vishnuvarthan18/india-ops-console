@@ -1,0 +1,134 @@
+/* One stylesheet, no framework, no CDN — this app is reached over an SSH
+   tunnel and must render with no outbound network at all. */
+
+:root {
+  --bg: #fbfbfa; --panel: #fff; --ink: #1a1a18; --muted: #6b6b66;
+  --line: #e4e4e0; --accent: #2f5d50; --bad: #a6332e; --warn: #9a6a12;
+  --ok: #2f6b45; --radius: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161614; --panel: #1e1e1b; --ink: #ecebe6; --muted: #9a9a92;
+    --line: #2e2e2a; --accent: #7fbca8; --bad: #e08a84; --warn: #d6aa5c; --ok: #85c79c;
+  }
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.55 ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+nav {
+  display: flex; gap: 18px; align-items: center; flex-wrap: wrap;
+  padding: 12px 24px; border-bottom: 1px solid var(--line); background: var(--panel);
+}
+nav a { color: var(--muted); font-size: 14px; }
+nav a.on { color: var(--ink); font-weight: 600; }
+nav .brand { font-weight: 700; color: var(--ink); margin-right: 10px; }
+nav .right { margin-left: auto; }
+button.link { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 14px; }
+
+main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 72px; }
+header.page { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+h1 { font-size: 24px; margin: 8px 0 4px; }
+h2 { font-size: 16px; margin: 32px 0 10px; letter-spacing: .01em; }
+h3 { font-size: 15px; margin: 0 0 4px; }
+section { margin-bottom: 8px; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; }
+.r { text-align: right; }
+.error { color: var(--bad); }
+.ok { color: var(--ok); }
+.bad-text { color: var(--bad); font-weight: 600; }
+
+/* tiles */
+.tiles { display: flex; gap: 12px; flex-wrap: wrap; margin: 14px 0; }
+.tile {
+  flex: 1 1 150px; background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 14px 16px; display: flex; flex-direction: column; gap: 2px;
+  color: inherit;
+}
+.tile .n { font-size: 24px; font-weight: 650; letter-spacing: -.02em; }
+.tile .of { font-size: 15px; color: var(--muted); font-weight: 400; }
+.tile .l { font-size: 13px; color: var(--muted); }
+.tile.bad { border-color: var(--bad); }
+.tile.bad .n { color: var(--bad); }
+.tile.warn { border-color: var(--warn); }
+.tile.warn .n { color: var(--warn); }
+a.tile:hover { text-decoration: none; border-color: var(--accent); }
+
+.light { font-size: 13px; padding: 4px 12px; border-radius: 999px; font-weight: 600; }
+.light.green { background: rgba(47,107,69,.14); color: var(--ok); }
+.light.amber { background: rgba(154,106,18,.16); color: var(--warn); }
+.light.red   { background: rgba(166,51,46,.14); color: var(--bad); }
+
+/* cards */
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.card {
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 16px; color: inherit; display: block;
+}
+.card:hover { border-color: var(--accent); text-decoration: none; }
+.kv { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; color: var(--muted); margin: 8px 0; }
+
+/* tables */
+table { width: 100%; border-collapse: collapse; background: var(--panel);
+        border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+th, td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; }
+tbody tr:last-child td { border-bottom: 0; }
+tr.row-bad td { background: rgba(166,51,46,.06); }
+tr.done-row { opacity: .5; }
+
+/* pills + tags */
+.pill { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 999px;
+        background: rgba(120,120,120,.16); color: var(--muted); }
+.pill.success, .pill.active { background: rgba(47,107,69,.16); color: var(--ok); }
+.pill.partial, .pill.running, .pill.ready { background: rgba(154,106,18,.18); color: var(--warn); }
+.pill.failed, .pill.blocked { background: rgba(166,51,46,.16); color: var(--bad); }
+.tag { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 4px;
+       border: 1px solid var(--line); color: var(--muted); }
+.tag.warn { border-color: var(--warn); color: var(--warn); }
+
+/* sparkline */
+.spark { display: flex; align-items: flex-end; gap: 2px; height: 70px;
+         background: var(--panel); border: 1px solid var(--line);
+         border-radius: var(--radius); padding: 8px; }
+.spark .bar { flex: 1; min-height: 1px; background: var(--accent); border-radius: 2px 2px 0 0; opacity: .8; }
+.spark .bar:hover { opacity: 1; }
+
+/* forms */
+.login { max-width: 320px; margin: 12vh auto; }
+.login label { display: block; margin: 14px 0 4px; font-size: 13px; color: var(--muted); }
+input, select {
+  width: 100%; padding: 8px 10px; border: 1px solid var(--line);
+  border-radius: 8px; background: var(--panel); color: var(--ink); font: inherit;
+}
+select { width: auto; font-size: 13px; padding: 4px 8px; }
+button {
+  margin-top: 16px; padding: 9px 16px; border: 0; border-radius: 8px;
+  background: var(--accent); color: #fff; font: inherit; font-weight: 600; cursor: pointer;
+}
+form.inline { margin: 0; } form.inline button { margin-top: 0; }
+.search { display: flex; gap: 8px; align-items: center; margin: 12px 0; }
+.search button { margin-top: 0; }
+
+.tabs { display: flex; gap: 14px; flex-wrap: wrap; margin: 12px 0 4px;
+        border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+.tabs a { font-size: 13px; color: var(--muted); }
+.tabs a.on { color: var(--ink); font-weight: 600; }
+
+pre.doc {
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 16px; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; line-height: 1.6;
+}
+@media (max-width: 640px) {
+  main { padding: 16px; }
+  table { font-size: 13px; }
+  th, td { padding: 7px 8px; }
+}
