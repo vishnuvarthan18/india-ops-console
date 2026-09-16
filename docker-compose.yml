@@ -32,6 +32,11 @@ services:
       - ${REPOS_HOST_DIR:-/home/ubuntu}:/repos:ro
     ports:
       - "127.0.0.1:${OPS_CONSOLE_HOST_PORT:-8010}:8010"
+    # Linux has no built-in host.docker.internal. This is how the console
+    # reaches the control service, which runs on the host rather than in a
+    # container precisely because its job is to talk to systemd.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - core
 

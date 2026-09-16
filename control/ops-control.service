@@ -1,0 +1,31 @@
+[Unit]
+Description=ops-control — privileged action service for the ops console
+Documentation=file:///home/ubuntu/india-ops-console/README.md
+After=network.target
+
+[Service]
+Type=simple
+# Needs root to start units and to write the secrets file. This is the only
+# component of the console that runs privileged, which is exactly why it is
+# this small and this narrow.
+User=root
+EnvironmentFile=/etc/ops-control/ops-control.env
+ExecStart=/usr/bin/python3 /home/ubuntu/india-ops-console/control/control_service.py
+Restart=on-failure
+RestartSec=5
+
+# It talks to systemd and writes one file. Everything else is closed off.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=read-only
+ProtectSystem=full
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_UNIX
+# ProtectHome=read-only would block the secrets-file write, so the one
+# directory it must write to is granted back explicitly.
+ReadWritePaths=/home/ubuntu/core-infra
+
+[Install]
+WantedBy=multi-user.target

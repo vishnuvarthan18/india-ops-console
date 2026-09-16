@@ -1,0 +1,15 @@
+# Environment variables the console may rotate in the secrets file.
+#
+# Only variables that are genuinely per-source API keys. Never list
+# POSTGRES_PASSWORD, MINIO_ROOT_PASSWORD, SESSION_SECRET or CONTROL_TOKEN:
+# rotating those from a web form would let one compromised session take the
+# platform apart, and they are rare enough to do by hand.
+#
+# Install to /etc/ops-control/keyvars.allow, owned by root, mode 0644.
+
+DATA_GOV_IN_API_KEY
+WDPA_API_KEY
+IUCN_API_KEY
+GEONAMES_USERNAME
+OPENTOPOGRAPHY_API_KEY
+GFW_API_KEY

@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}Ops Console{% endblock %} — India Data Platform</title>
 <link rel="stylesheet" href="/static/style.css">
+{% block head_extra %}{% endblock %}
 </head>
 <body>
 {% if request.session.get('admin') %}
@@ -13,6 +14,9 @@
   <a href="/" class="{{ 'on' if request.url.path == '/' }}">Overview</a>
   <a href="/alerts" class="{{ 'on' if request.url.path.startswith('/alerts') }}">Alerts &amp; jobs</a>
   <a href="/engines" class="{{ 'on' if request.url.path.startswith('/engines') }}">Engines</a>
+  <a href="/data" class="{{ 'on' if request.url.path.startswith('/data') or request.url.path.startswith('/entity') }}">Data</a>
+  <a href="/map" class="{{ 'on' if request.url.path.startswith('/map') }}">Map</a>
+  <a href="/keys" class="{{ 'on' if request.url.path.startswith('/keys') }}">Keys</a>
   <a href="/server" class="{{ 'on' if request.url.path.startswith('/server') }}">Server</a>
   <a href="/decisions" class="{{ 'on' if request.url.path.startswith('/decisions') }}">Decisions</a>
   <a href="/open-items" class="{{ 'on' if request.url.path.startswith('/open-items') }}">Open items</a>

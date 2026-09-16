@@ -29,6 +29,23 @@ class Settings(BaseSettings):
     metrics_file: str = "/var/ops-metrics/metrics.json"
     repos_dir: str = "/repos"
 
+    # The privileged control service (section 4). Empty token disables every
+    # action in the UI rather than failing at click time — a console with no
+    # control service is still a perfectly good read-only console.
+    control_url: str = "http://host.docker.internal:8011"
+    control_token: str = ""
+
+    # Notifications (section 5). Both optional and both off by default:
+    # alert episodes are always recorded, delivery is what is configurable.
+    alert_webhook_url: str = ""
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_starttls: bool = True
+    alert_email_from: str = ""
+    alert_email_to: str = ""
+
     ops_console_env: str = "production"
     log_level: str = "INFO"
 

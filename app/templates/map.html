@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% from "_filters.html" import filter_form %}
+{% block title %}Map{% endblock %}
+{% block head_extra %}<link rel="stylesheet" href="/static/vendor/leaflet.css">{% endblock %}
+{% block body %}
+<header class="page">
+  <h1>Map</h1>
+  <a class="muted" href="/data?{{ querystring }}">← back to the table</a>
+</header>
+
+{{ filter_form(facets, params, "/map") }}
+
+<div id="map"></div>
+<p class="muted small" id="mapnote">Loading…</p>
+<p class="muted small">Points only — polygons are invisible at national zoom and cost megabytes.
+Entities below full precision are shown at a district-level representative point, and withheld
+entities are not plotted at all. Map tiles come from OpenStreetMap over your own browser's
+connection; the console itself makes no outbound requests.</p>
+
+<section>
+  <h2>Geometry coverage</h2>
+  <p class="muted small">What fraction of each entity type actually has coordinates. This is the
+  number that says whether the map above shows the platform or only part of it.</p>
+  <table>
+    <thead><tr><th>Engine</th><th>Type</th><th class="r">Total</th><th class="r">With coordinates</th><th class="r">%</th></tr></thead>
+    <tbody>
+    {% for c in coverage %}
+      <tr>
+        <td class="muted small">{{ c.engine_name }}</td>
+        <td>{{ c.entity_type }}</td>
+        <td class="r">{{ "{:,}".format(c.total) }}</td>
+        <td class="r">{{ "{:,}".format(c.with_geom) }}</td>
+        <td class="r {{ 'bad-text' if (c.pct or 0) < 50 }}">{{ c.pct if c.pct is not none else '—' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<script src="/static/vendor/leaflet.js"></script>
+<script>
+// Leaflet looks for its marker images relative to where it thinks it was
+// loaded from; say so explicitly since it is vendored, not on a CDN.
+L.Icon.Default.prototype.options.imagePath = "/static/vendor/images/";
+
+const map = L.map("map").setView([22.0, 79.0], 5);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 18,
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+}).addTo(map);
+
+const note = document.getElementById("mapnote");
+fetch("/map/data.geojson?" + window.location.search.replace(/^\?/, ""))
+  .then(r => r.json())
+  .then(gj => {
+    const layer = L.geoJSON(gj, {
+      pointToLayer: (f, latlng) => L.circleMarker(latlng, {
+        radius: f.properties.coarsened ? 7 : 5,
+        weight: f.properties.coarsened ? 2 : 1,
+        color: f.properties.coarsened ? "#9a6a12" : "#2f5d50",
+        fillColor: f.properties.coarsened ? "#d6aa5c" : "#2f5d50",
+        fillOpacity: 0.55,
+        dashArray: f.properties.coarsened ? "3,3" : null
+      }),
+      onEachFeature: (f, lyr) => {
+        const p = f.properties;
+        lyr.bindPopup(
+          "<b>" + escapeHtml(p.name) + "</b><br>" +
+          escapeHtml(p.type) + " · " + escapeHtml(p.engine) + "<br>" +
+          escapeHtml([p.district, p.state].filter(Boolean).join(", ")) +
+          (p.coarsened ? "<br><i>shown at district level</i>" : "") +
+          '<br><a href="/entity/' + encodeURIComponent(p.uid) + '">open record</a>'
+        );
+      }
+    }).addTo(map);
+    if (gj.features.length) map.fitBounds(layer.getBounds(), {maxZoom: 8});
+    note.textContent = gj.returned.toLocaleString() + " plotted" +
+      (gj.returned >= gj.limit ? " (capped at " + gj.limit.toLocaleString() + " — narrow the filter to see the rest)" : "");
+  })
+  .catch(e => { note.textContent = "Could not load map data: " + e; });
+
+// Names come from the database, not from a trusted source — escape them
+// rather than letting a source's row author HTML in this page.
+function escapeHtml(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, c =>
+    ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+</script>
+{% endblock %}

@@ -1,0 +1,11 @@
+[Unit]
+Description=Sync ops-console alert episodes and send notifications
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/india-ops-console
+ExecStart=/usr/bin/docker compose run --rm -T ops-console python -m app.notifier
+TimeoutStartSec=300

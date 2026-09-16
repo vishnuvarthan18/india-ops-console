@@ -11,12 +11,12 @@ from contextlib import asynccontextmanager
 from datetime import timedelta
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, status
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from app import decisions, metrics, queries
+from app import alerting, browse, control, decisions, keys, metrics, queries
 from app.auth import SESSION_KEY, check_login, require_admin
 from app.db import close_pool, execute, open_pool
 from app.settings import get_settings
@@ -131,7 +131,147 @@ def overview(request: Request):
 
 @app.get("/alerts", response_class=HTMLResponse, dependencies=[ADMIN])
 def alerts_page(request: Request):
-    return page(request, "alerts.html", alerts=queries.alerts_detail(), jobs=queries.jobs())
+    return page(request, "alerts.html",
+                alerts=queries.alerts_detail(),
+                jobs=queries.jobs(),
+                history=alerting.history(60),
+                control_units=set(control.list_units()),
+                control_ok=bool(get_settings().control_token),
+                actions=control.recent_actions(15))
+
+
+# ---------------------------------------------------------------------------
+# Section 3 — data browser and map
+# ---------------------------------------------------------------------------
+
+BROWSE_PARAMS = ("engine", "entity_type", "state", "precision", "geom", "q")
+
+
+def _browse_params(request: Request) -> dict:
+    """Only the filters the browser knows about are ever read out of the query
+    string; anything else is dropped here rather than reaching browse.py."""
+    return {k: request.query_params.get(k, "") for k in BROWSE_PARAMS}
+
+
+@app.get("/data", response_class=HTMLResponse, dependencies=[ADMIN])
+def data_browser(request: Request, page_no: int = 1):
+    params = _browse_params(request)
+    try:
+        page_no = max(1, int(request.query_params.get("page", page_no)))
+    except ValueError:
+        page_no = 1
+    result = browse.search(params, page_no)
+    return page(request, "data.html", result=result, facets=browse.facets(),
+                params=params, querystring=request.url.query)
+
+
+@app.get("/data/export.csv", dependencies=[ADMIN])
+def data_export(request: Request):
+    """CSV of the current filter. Withheld entities are excluded and restricted
+    ones lose their coordinates — see browse.export_rows."""
+    import csv
+    import io
+
+    rows = browse.export_rows(_browse_params(request))
+    buf = io.StringIO()
+    if rows:
+        writer = csv.DictWriter(buf, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+    else:
+        buf.write("no rows matched this filter\n")
+    return PlainTextResponse(
+        buf.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="india-data-export.csv"'},
+    )
+
+
+@app.get("/entity/{uid:path}", response_class=HTMLResponse, dependencies=[ADMIN])
+def entity_page(request: Request, uid: str):
+    row = browse.entity_detail(uid)
+    if row is None:
+        raise HTTPException(404, f"no entity with uid {uid!r}")
+    return page(request, "entity.html", e=row)
+
+
+@app.get("/map", response_class=HTMLResponse, dependencies=[ADMIN])
+def map_page(request: Request):
+    return page(request, "map.html", facets=browse.facets(),
+                params=_browse_params(request),
+                coverage=browse.geometry_coverage(),
+                querystring=request.url.query)
+
+
+@app.get("/map/data.geojson", dependencies=[ADMIN])
+def map_data(request: Request):
+    return JSONResponse(browse.map_geojson(_browse_params(request)))
+
+
+# ---------------------------------------------------------------------------
+# Section 4 — run control (through the privileged service, never directly)
+# ---------------------------------------------------------------------------
+
+@app.post("/jobs/{unit}/run", dependencies=[ADMIN])
+def run_job(unit: str):
+    try:
+        result = control.run_unit(unit)
+    except control.ControlUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+    if not result.get("ok"):
+        raise HTTPException(result.get("_status", 500),
+                            result.get("error") or result.get("detail") or "run failed")
+    return RedirectResponse(f"/jobs/{unit}", status_code=302)
+
+
+@app.get("/jobs/{unit}", response_class=HTMLResponse, dependencies=[ADMIN])
+def job_page(request: Request, unit: str, lines: int = 120):
+    try:
+        status_info = control.unit_status(unit)
+        logs = control.unit_logs(unit, lines)
+    except control.ControlUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+    if status_info.get("error"):
+        raise HTTPException(403, status_info["error"])
+    return page(request, "job.html", unit=unit, status=status_info, logs=logs)
+
+
+# ---------------------------------------------------------------------------
+# Section 7 — API keys
+# ---------------------------------------------------------------------------
+
+@app.get("/keys", response_class=HTMLResponse, dependencies=[ADMIN])
+def keys_page(request: Request):
+    return page(request, "keys.html",
+                rows=keys.registry(),
+                orphans=keys.unregistered_sources(),
+                rotatable=bool(get_settings().control_token))
+
+
+@app.post("/keys/{key_id}/status", dependencies=[ADMIN])
+def key_status(key_id: int, status_value: str = Form(...)):
+    try:
+        keys.set_status(key_id, status_value)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return RedirectResponse("/keys", status_code=302)
+
+
+@app.post("/keys/{env_var}/rotate", dependencies=[ADMIN])
+def key_rotate(env_var: str, value: str = Form(...), restart_unit: str = Form("")):
+    """The new value goes straight to the control service and is never written
+    to the database, the session, or the logs."""
+    row = keys.by_env_var(env_var)
+    if row is None:
+        raise HTTPException(404, f"{env_var} is not in the registry")
+    try:
+        result = control.rotate_key(env_var, value, restart_unit or row.get("service_unit"))
+    except control.ControlUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+    if not result.get("ok"):
+        raise HTTPException(result.get("_status", 500), result.get("error") or "rotation failed")
+    keys.mark_rotated(env_var)
+    return RedirectResponse("/keys", status_code=302)
 
 
 # ---------------------------------------------------------------------------

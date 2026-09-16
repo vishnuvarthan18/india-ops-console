@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% from "_filters.html" import filter_form %}
+{% block title %}Data{% endblock %}
+{% block body %}
+<header class="page">
+  <h1>Data browser</h1>
+  <a class="muted" href="/map?{{ querystring }}">View on map →</a>
+</header>
+
+{{ filter_form(facets, params, "/data") }}
+
+<p class="muted small">
+  {{ "{:,}".format(result.total) }} matching {{ 'entity' if result.total == 1 else 'entities' }}
+  · page {{ result.page }} of {{ result.pages }}
+  · <a href="/data/export.csv?{{ querystring }}">download CSV</a>
+</p>
+
+<table>
+  <thead><tr><th>Name</th><th>Type</th><th>Engine</th><th>Where</th><th class="r">Facts</th><th>Geometry</th><th>Precision</th></tr></thead>
+  <tbody>
+  {% for r in result.rows %}
+    <tr>
+      <td><a href="/entity/{{ r.uid }}">{{ r.name }}</a>
+        {% if r.name_local %}<div class="muted small">{{ r.name_local }}</div>{% endif %}</td>
+      <td class="muted small">{{ r.entity_type }}</td>
+      <td class="muted small">{{ r.engine_name }}</td>
+      <td class="muted small">{{ r.district + ', ' if r.district }}{{ r.state or '—' }}</td>
+      <td class="r">{{ r.fact_count }}</td>
+      <td>{% if r.has_geom %}<span class="pill success">yes</span>{% else %}<span class="pill">no</span>{% endif %}</td>
+      <td class="muted small">{% if r.publish_precision != 'full' %}<span class="tag warn">{{ r.publish_precision }}</span>{% else %}full{% endif %}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="7" class="muted">Nothing matches this filter.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+{% if result.pages > 1 %}
+<div class="pager">
+  {% set base = querystring | replace('page=' + result.page|string, '') %}
+  {% if result.page > 1 %}<a href="/data?{{ base }}&page={{ result.page - 1 }}">← previous</a>{% endif %}
+  <span class="muted">page {{ result.page }} of {{ result.pages }}</span>
+  {% if result.page < result.pages %}<a href="/data?{{ base }}&page={{ result.page + 1 }}">next →</a>{% endif %}
+</div>
+{% endif %}
+
+<p class="muted small">CSV exports exclude withheld entities and drop coordinates from anything
+below full precision — an export is a file that leaves the platform the moment someone forwards it.</p>
+{% endblock %}

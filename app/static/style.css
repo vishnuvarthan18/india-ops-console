@@ -132,3 +132,23 @@ pre.doc {
   table { font-size: 13px; }
   th, td { padding: 7px 8px; }
 }
+
+/* --- phase 2: browser, map, keys --- */
+.filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end;
+           background: var(--panel); border: 1px solid var(--line);
+           border-radius: var(--radius); padding: 12px; margin: 12px 0; }
+.filters label { display: flex; flex-direction: column; gap: 3px;
+                 font-size: 12px; color: var(--muted); }
+.filters input { width: 160px; }
+.filters button { margin-top: 0; }
+.pager { display: flex; gap: 16px; align-items: center; justify-content: center;
+         margin: 16px 0; font-size: 14px; }
+#map { height: 520px; border: 1px solid var(--line); border-radius: var(--radius);
+       margin: 12px 0 6px; }
+/* Leaflet's own popups inherit the page's dark mode rather than staying white */
+.leaflet-popup-content-wrapper, .leaflet-popup-tip {
+  background: var(--panel); color: var(--ink); }
+.leaflet-container { background: var(--bg); font: inherit; }
+details.rotate { margin-top: 6px; }
+details.rotate summary { cursor: pointer; }
+details.rotate input { width: 170px; margin-top: 6px; }

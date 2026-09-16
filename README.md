@@ -1,21 +1,21 @@
 # india-ops-console
 
-The private admin web app for the India data platform. Phase 1: **read-only**.
+The private admin web app for the India data platform. All nine sections of
+`ops-dashboard-plan.md` are built.
 
-Covers sections 1, 2, 6, 8 and 9 of `ops-dashboard-plan.md` — overview, engine
-health, server and infrastructure, the decisions log, and the open-items
-tracker — plus the job-health half of section 4. It also ships the fix for
-D-70 (false stale alerts).
+Overview, engine health, data browser with map, run control, alerts with
+history and notifications, server and infrastructure, API key registry, the
+decisions log, and the open-items tracker. It also ships the fix for D-70
+(false stale alerts).
 
-There is deliberately **no** endpoint in this app that runs a command, reads a
-secret, or writes to an engine table. Manual run triggering, log tailing and
-key rotation (plan sections 4, 5 and 7) need a separate privileged control
-service; widening this one to do that would throw away the safety properties
-described below.
+The web app still runs no commands itself. Actions — starting a job, tailing a
+log, rotating a key — go to `ops-control`, a separate ~300-line service that
+runs on the host with a strict allowlist. That split is what lets the console
+gain real powers without the web layer ever getting a shell.
 
 ## Why it is safe to expose an admin UI over this data
 
-Three independent controls, none of which relies on the web code being
+Four independent controls, none of which relies on the web code being
 bug-free:
 
 1. **The database role cannot write engine data.** `ops_console` has `SELECT`
@@ -26,6 +26,15 @@ bug-free:
 2. **It has no shell and no Docker socket.** The host metrics it displays are
    produced by a root-owned script on the host, on its own timer, written to a
    file the console reads read-only. The web app cannot invoke it.
+2b. **Actions go through an allowlist the console cannot edit.** `ops-control`
+   compares every requested unit name against `/etc/ops-control/units.allow`
+   and every key name against `keyvars.allow` — files owned by root, outside
+   the container. It has three verbs (start a unit, read its status, tail its
+   journal) plus a single-line secrets write. Every subprocess call passes an
+   argument list with `shell=False`, so there is no string a request can
+   influence that a shell ever parses. Tested against command substitution,
+   shell metacharacters, null bytes, newline injection, case variation,
+   whitespace padding and path traversal — all refused, all 403.
 3. **It is not on the internet.** The port binds to `127.0.0.1` for the same
    reason core-infra's do (D-2: Docker's iptables rules run before ufw's INPUT
    chain, so a `0.0.0.0` bind is internet-reachable even with ufw denying
@@ -119,12 +128,142 @@ applied:
 Not yet verified against the live database, since this session had no route
 to the VPS.
 
+## How each phase-2 piece works
+
+### Data browser and map (section 3)
+
+Filters are built from a fixed column map in `browse.py`, never from request
+strings: a parameter the map does not know is dropped, so no query string
+reaches SQL as text.
+
+`publish_precision` is honoured on the way *out*, not only on the way in. The
+database already refuses to store a sacred grove, traditional-knowledge record
+or FRA claim at full precision. This applies the matching read-side rule:
+restricted entities appear on the map at a district-level representative point
+(dashed amber, labelled "shown at district level"), and CSV exports drop their
+coordinates entirely while withheld entities are excluded outright. Stricter
+than an internal tool strictly needs — but an export is a file that leaves the
+platform the moment someone forwards it, and §5's line is about the data, not
+the viewer. Verified: 8 test groves collapse to 3 distinct district points, and
+their CSV latitude column is empty.
+
+Leaflet is **vendored** into `app/static/vendor/` (BSD-2, licence included)
+rather than loaded from a CDN, because the console must render with no outbound
+network. Map tiles come from OpenStreetMap over the *viewer's* browser
+connection, with attribution; the server itself still makes no outbound
+requests. Entity names are escaped before going into popups — a name arrives
+from a government CSV, not from a trusted author.
+
+The map plots points only. Polygons are invisible at national zoom and cost
+megabytes; the detail page has the real geometry for a single entity. The
+geometry-coverage table beneath the map is the honest companion to it: it says
+what fraction of each entity type has coordinates at all, so the map is not
+mistaken for the whole platform.
+
+### Run control (section 4)
+
+`/jobs/<unit>` shows status and the recent journal; one button starts it.
+Everything routes through `ops-control`. `systemctl start --no-block` is used
+so a multi-minute harvest does not hold an HTTP request open — the page polls
+instead.
+
+Every action is written to `ops_console.control_action` **before** it is
+attempted, so an action that kills the control service still leaves a trace.
+
+### Alerts (section 5)
+
+The existing views answer "what is wrong now" and forget a problem the instant
+it clears. `ops_console.alert_event` turns each condition into an episode with
+an `opened_at` and a `resolved_at`, so "what broke last Tuesday and when did it
+clear" is answerable a month later.
+
+Notifications fire on **transitions only** — an episode opening or closing —
+never on every poll. A partial unique index on open episodes enforces that
+structurally, so the notifier does not have to remember what it already sent.
+Verified: three consecutive polls of the same nine conditions produced nine
+messages, not twenty-seven. Resolutions are notified too; a channel that only
+ever delivers bad news gets muted.
+
+Delivery failure never breaks the history, and the notifier exits 0 even when a
+webhook is down — an alerting system that becomes a failed unit because a
+webhook is down is the same noise loop D-70 was.
+
+### API keys (section 7)
+
+No key value is ever stored or read back. The registry records that a key
+exists, which variable carries it, who is blocked without it, and when it was
+last rotated. Rotation hands the value straight to the control service, which
+rewrites one line of the secrets file atomically at 0600, keeps a `.bak`, and
+optionally restarts one allowlisted service. The value is never logged, never
+stored, and never rendered.
+
+`keyvars.allow` deliberately excludes `POSTGRES_PASSWORD`,
+`MINIO_ROOT_PASSWORD`, `SESSION_SECRET` and `CONTROL_TOKEN`: rotating those
+from a web form would let one compromised session take the platform apart, and
+they are rare enough to do by hand.
+
+The page also lists sources that declare `requires_api_key` but whose variable
+is not in the registry — the gap a hand-maintained markdown list cannot catch.
+
+## Deploying phase 2
+
+In addition to the phase-1 steps:
+
+    # migrations
+    docker exec -i core-postgres psql -U india -d india_data < db/migrations/0021_ops_console_phase2.sql
+
+    # control service (host, not a container)
+    sudo mkdir -p /etc/ops-control
+    sudo cp control/units.allow control/keyvars.allow /etc/ops-control/
+    sudo cp control/ops-control.env.example /etc/ops-control/ops-control.env
+    sudo chmod 600 /etc/ops-control/ops-control.env
+    python3 -c "import secrets; print(secrets.token_urlsafe(48))"   # CONTROL_TOKEN
+    # put that token in BOTH /etc/ops-control/ops-control.env and the console's .env
+    sudo cp control/ops-control.service /etc/systemd/system/
+    sudo systemctl daemon-reload && sudo systemctl enable --now ops-control
+
+    # alert notifier timer
+    sudo cp ops/systemd/ops-alerts.* /etc/systemd/system/
+    sudo systemctl daemon-reload && sudo systemctl enable --now ops-alerts.timer
+
+    docker compose up -d --build
+
+Review `control/units.allow` before installing it. That file is the security
+boundary: a unit not listed cannot be touched by the console whatever the
+request says.
+
+## Phase-2 verification (2026-09-16, before deploy)
+
+Against a throwaway Postgres 16 **with PostGIS**, real `0001`/`0002` schema,
+153 seeded entities including 8 restricted sacred groves:
+
+- All 9 pages plus every filter combination return 200.
+- Restricted entities: coordinates hidden on the detail page, collapsed to 3
+  district points on the map, empty latitude in CSV; full-precision rows keep
+  their coordinates.
+- The map page loads no script or stylesheet from the internet.
+- Control service refused all 14 hostile unit names (command substitution,
+  metacharacters, newline injection, null byte, case variation, whitespace
+  padding, traversal, wildcard, `docker.service`, `ssh.service`, non-`.service`
+  suffix) and accepted only the exact allowlisted names.
+- Rotation refused `POSTGRES_PASSWORD`, `MINIO_ROOT_PASSWORD`, `CONTROL_TOKEN`
+  and `SESSION_SECRET`; refused short and non-string values; refused to restart
+  a non-allowlisted unit; wrote 0600 with a `.bak`; and no key value appeared
+  in any log.
+- Notifier: 9 opens then two silent polls; resolving one condition sent exactly
+  one resolve message; a dead webhook still recorded the episode and exited 0.
+- Every new endpoint — geojson, CSV, job trigger, key rotation — refuses a
+  signed-out request.
+
+Still not verified against the live database.
+
 ## Known gaps
 
 - `ops_console.host_metric` exists for metrics history but nothing writes to
   it yet; the console reads the current snapshot from the JSON file. Wire the
   collector to insert there when a trend view is wanted.
 - Container memory in the metrics snapshot is always null — `docker stats`
-  costs a second per container and the timer runs every 10 minutes. Add it if
-  it turns out to matter.
-- No map view or data browser (plan section 3) — that is the next phase.
+  costs a second per container and the timer runs every 10 minutes.
+- The job page does not auto-refresh while a job runs; reload to see progress.
+- Retry is the same action as run (harvests are idempotent), so there is no
+  separate retry button.

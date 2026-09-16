@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}API keys{% endblock %}
+{% block body %}
+<header class="page"><h1>API keys</h1></header>
+<p class="muted small">No key value is stored here or anywhere the console can read. This is a
+register of which keys exist, who is blocked without them, and when each was last rotated.</p>
+
+{% set pending = rows | selectattr('status', 'equalto', 'pending') | list %}
+{% if pending %}
+<p class="error">{{ pending | length }} key{{ '' if pending|length == 1 else 's' }} still pending —
+  each one blocks real engine work.</p>
+{% endif %}
+
+<table>
+  <thead><tr><th>Key</th><th>Blocks</th><th>Status</th><th>Last rotated</th><th></th></tr></thead>
+  <tbody>
+  {% for k in rows %}
+    <tr class="{{ 'row-bad' if k.status == 'pending' }}">
+      <td><b>{{ k.label }}</b>
+        <div class="muted small mono">{{ k.env_var }}</div>
+        {% if k.notes %}<div class="muted small">{{ k.notes }}</div>{% endif %}
+        {% if k.register_url and k.status == 'pending' %}
+          <div class="small"><a href="{{ k.register_url }}" target="_blank" rel="noreferrer noopener">register →</a></div>
+        {% endif %}</td>
+      <td class="muted small">{{ k.engine_name or '—' }}
+        {% if k.blocked_sources %}<div>{{ k.blocked_sources }} source(s)</div>{% endif %}</td>
+      <td><span class="pill {{ 'success' if k.status == 'registered' else ('failed' if k.status == 'pending' else '') }}">{{ k.status }}</span>
+        {% if k.rotation_overdue %}<div><span class="tag warn">rotation overdue</span></div>{% endif %}</td>
+      <td class="muted small">{{ k.last_rotated_at.strftime('%Y-%m-%d') if k.last_rotated_at else 'never' }}</td>
+      <td>
+        <form method="post" action="/keys/{{ k.id }}/status" class="inline">
+          <select name="status_value" onchange="this.form.submit()">
+            {% for s in ['pending', 'registered', 'not_needed'] %}
+              <option value="{{ s }}" {{ 'selected' if k.status == s }}>{{ s }}</option>
+            {% endfor %}
+          </select>
+        </form>
+        {% if rotatable %}
+        <details class="rotate">
+          <summary class="muted small">rotate</summary>
+          <form method="post" action="/keys/{{ k.env_var }}/rotate" class="inline">
+            <input type="password" name="value" placeholder="new value" required minlength="8" autocomplete="off">
+            <input type="text" name="restart_unit" value="{{ k.service_unit or '' }}" placeholder="unit to restart (optional)">
+            <button type="submit">Rotate</button>
+          </form>
+          <p class="muted small">Writes the new value into the secrets file on the host and
+          optionally restarts one allowlisted service. The value is never logged or stored.</p>
+        </details>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+{% if not rotatable %}
+<p class="muted small">Rotation is unavailable: the control service is not configured
+(<code>CONTROL_TOKEN</code> unset). The registry above is still fully usable.</p>
+{% endif %}
+
+{% if orphans %}
+<section>
+  <h2>Sources needing a key that is not in the registry</h2>
+  <p class="muted small">These declare <code>requires_api_key</code> but their variable is not
+  tracked above — the gap a hand-maintained list cannot catch.</p>
+  <table>
+    <thead><tr><th>Source</th><th>Engine</th><th>Variable</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for o in orphans %}
+      <tr><td>{{ o.key }}<div class="muted small">{{ o.name }}</div></td>
+          <td class="muted small">{{ o.engine_key }}</td>
+          <td class="mono small">{{ o.api_key_env_var or '— none declared —' }}</td>
+          <td><span class="pill {{ o.status }}">{{ o.status }}</span></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+{% endblock %}

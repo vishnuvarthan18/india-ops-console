@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}{{ unit }}{% endblock %}
+{% block body %}
+<header class="page">
+  <h1>{{ unit }}</h1>
+  <a class="muted" href="/alerts">← all jobs</a>
+</header>
+
+<section class="tiles">
+  <div class="tile"><span class="n">{% if status.failed %}failed{% elif status.active %}running{% else %}idle{% endif %}</span>
+    <span class="l">State</span></div>
+  <div class="tile">
+    <form method="post" action="/jobs/{{ unit }}/run" class="inline">
+      <button type="submit">Run now</button>
+    </form>
+    <span class="l">Harvests are idempotent — running again is safe</span>
+  </div>
+</section>
+
+<section>
+  <h2>Status</h2>
+  <pre class="doc">{{ status.text }}</pre>
+</section>
+
+<section>
+  <h2>Recent log</h2>
+  <form method="get" class="search">
+    <label class="muted small">Lines
+      <select name="lines" onchange="this.form.submit()">
+        {% for n in [60, 120, 300, 500] %}<option value="{{ n }}">{{ n }}</option>{% endfor %}
+      </select></label>
+  </form>
+  <pre class="doc">{{ logs }}</pre>
+</section>
+{% endblock %}

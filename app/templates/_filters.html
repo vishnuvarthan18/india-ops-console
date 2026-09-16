@@ -1,0 +1,41 @@
+{% macro filter_form(facets, params, action) %}
+<form method="get" action="{{ action }}" class="filters">
+  <label>Engine
+    <select name="engine">
+      <option value="">any</option>
+      {% for e in facets.engines %}
+        <option value="{{ e.key }}" {{ 'selected' if params.engine == e.key }}>{{ e.name }} ({{ e.n }})</option>
+      {% endfor %}
+    </select></label>
+  <label>Type
+    <select name="entity_type">
+      <option value="">any</option>
+      {% for t in facets.entity_types %}
+        <option value="{{ t.entity_type }}" {{ 'selected' if params.entity_type == t.entity_type }}>{{ t.entity_type }} ({{ t.n }})</option>
+      {% endfor %}
+    </select></label>
+  <label>State
+    <select name="state">
+      <option value="">any</option>
+      {% for s in facets.states %}
+        <option value="{{ s.state }}" {{ 'selected' if params.state == s.state }}>{{ s.state }} ({{ s.n }})</option>
+      {% endfor %}
+    </select></label>
+  <label>Geometry
+    <select name="geom">
+      <option value="">any</option>
+      <option value="yes" {{ 'selected' if params.geom == 'yes' }}>has coordinates</option>
+      <option value="no"  {{ 'selected' if params.geom == 'no' }}>missing</option>
+    </select></label>
+  <label>Precision
+    <select name="precision">
+      <option value="">any</option>
+      {% for p in ['full', 'district_aggregate', 'withhold'] %}
+        <option value="{{ p }}" {{ 'selected' if params.precision == p }}>{{ p }}</option>
+      {% endfor %}
+    </select></label>
+  <label>Name contains
+    <input name="q" value="{{ params.q or '' }}" placeholder="search…"></label>
+  <button type="submit">Filter</button>
+</form>
+{% endmacro %}

@@ -1,0 +1,45 @@
+# Units the ops console may start, read status of, and tail logs for.
+#
+# This file IS the security boundary. A unit not listed here cannot be touched
+# by the console at all, whatever the request says. Add a line only when you
+# intend the console to be able to run that job.
+#
+# Install to /etc/ops-control/units.allow, owned by root, mode 0644.
+
+# --- Protected Areas ---
+pa-harvest.service
+
+# --- Water Systems ---
+water-nwdp.service
+
+# --- Mountains & Geography ---
+geo-usgs.service
+geo-peaks.service
+geo-passes-ranges.service
+geo-overpass-peaks-passes.service
+
+# --- Forests & Land ---
+forest-fsi.service
+forest-worldcover.service
+forest-wetlands.service
+forest-desertification.service
+
+# --- Tribal & Culture ---
+culture-glot.service
+culture-census-st.service
+culture-fra-jk.service
+
+# --- Living Species ---
+species-gbif.service
+species-powo.service
+
+# --- Laws & Management ---
+laws-egazette.service
+
+# --- Core infrastructure ---
+core-pg-backup.service
+core-api-heartbeat.service
+ops-metrics.service
+
+# Deliberately NOT listed: docker.service, ssh.service, and anything else
+# whose restart could lock you out of the machine or interrupt the database.
