@@ -1,63 +1,114 @@
 {% extends "base.html" %}
 {% block title %}{{ engine.name }}{% endblock %}
+{% block crumbs %}
+  <a href="/engines">Engines</a><span class="sep">/</span>
+  <span class="here">{{ engine.name | replace(' Engine','') }}</span>
+{% endblock %}
+
 {% block body %}
-<header class="page">
-  <h1>{{ engine.name }}</h1>
-  <a class="muted" href="/engines">← all engines</a>
-</header>
-<p class="muted">{{ engine.description or '' }}</p>
+<div class="page-head">
+  <div class="titles">
+    <h1>{{ engine.name | replace(' Engine','') }}</h1>
+    {% if engine.description %}<p class="lede">{{ engine.description }}</p>{% endif %}
+  </div>
+  <div class="acts">
+    <a class="btn" href="/data?engine={{ engine.key }}">{{ icon('table') }} Browse its data</a>
+    <a class="btn" href="/map?engine={{ engine.key }}">{{ icon('map') }} On the map</a>
+  </div>
+</div>
 
 <section>
-  <h2>What it holds</h2>
+  <div class="section-head"><h2>What it holds</h2></div>
+  <div class="panel">
   {% if entity_types %}
-  <table>
-    <thead><tr><th>Entity type</th><th class="r">Count</th><th class="r">With geometry</th></tr></thead>
-    <tbody>
-    {% for t in entity_types %}
-      <tr><td>{{ t.entity_type }}</td><td class="r">{{ "{:,}".format(t.n) }}</td>
-          <td class="r {{ 'muted' if t.with_geometry == 0 }}">{{ "{:,}".format(t.with_geometry) }}</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  {% else %}<p class="muted">No entities yet.</p>{% endif %}
+    <div class="table-wrap"><table>
+      <thead><tr>
+        <th scope="col">Type</th><th scope="col" class="r">Records</th>
+        <th scope="col" class="r">With coordinates</th><th scope="col" style="width:160px">Coverage</th>
+      </tr></thead>
+      <tbody>
+      {% for t in entity_types %}
+        {% set pct = (100 * t.with_geometry / t.n) if t.n else 0 %}
+        <tr>
+          <td><a href="/data?engine={{ engine.key }}&entity_type={{ t.entity_type }}">{{ t.entity_type }}</a></td>
+          <td class="r num">{{ "{:,}".format(t.n) }}</td>
+          <td class="r num {{ 'muted' if t.with_geometry == 0 }}">{{ "{:,}".format(t.with_geometry) }}</td>
+          <td>
+            <div class="meter {{ 'low' if pct < 34 else ('mid' if pct < 67 else '') }}">
+              <i style="width:{{ pct | round(1) }}%"></i></div>
+            <div class="sub num">{{ pct | round }}%</div>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody></table></div>
+  {% else %}
+    <div class="empty">
+      {{ icon('empty') }}
+      <h3>No records yet</h3>
+      <p>This engine is registered but has not collected anything. Either its jobs
+         have never run, or it has not been built.</p>
+    </div>
+  {% endif %}
+  </div>
 </section>
 
-<section>
-  <h2>Sources</h2>
-  <table>
-    <thead><tr><th>Source</th><th>Status</th><th>Tier</th><th>Last success</th><th class="r">Facts</th><th>Licence</th><th>Key</th></tr></thead>
+<section style="margin-top:var(--sp-5)">
+  <div class="section-head">
+    <h2>Sources</h2>
+    <span class="hint">licence and key requirements travel with the data</span>
+  </div>
+  <div class="panel"><div class="table-wrap"><table>
+    <thead><tr>
+      <th scope="col">Source</th><th scope="col">Status</th><th scope="col">Cadence</th>
+      <th scope="col">Last success</th><th scope="col" class="r">Facts</th><th scope="col">Licence</th>
+    </tr></thead>
     <tbody>
     {% for s in sources %}
       <tr>
-        <td>{% if s.base_url %}<a href="{{ s.base_url }}" rel="noreferrer noopener" target="_blank">{{ s.key }}</a>{% else %}{{ s.key }}{% endif %}
-            <div class="muted small">{{ s.name }}</div></td>
-        <td><span class="pill {{ s.status }}">{{ s.status }}</span></td>
-        <td class="muted">{{ s.schedule_tier }}</td>
-        <td class="muted">{% if s.last_success_at %}{{ s.last_success_at.strftime('%Y-%m-%d') }}{% else %}never{% endif %}</td>
-        <td class="r">{{ "{:,}".format(s.facts) }}</td>
-        <td class="muted small">{{ s.license_default }}
-          {% if not s.redistribution_allowed %}<span class="tag warn">no redistribution</span>{% endif %}
-          {% if not s.commercial_use_allowed %}<span class="tag">non-commercial</span>{% endif %}</td>
-        <td class="muted small">{% if s.requires_api_key %}<span class="tag warn">{{ s.api_key_env_var or 'key needed' }}</span>{% else %}—{% endif %}</td>
+        <td>
+          {% if s.base_url %}<a href="{{ s.base_url }}" target="_blank" rel="noreferrer noopener">{{ s.key }}</a>
+          {% else %}<span class="mono">{{ s.key }}</span>{% endif %}
+          <div class="sub">{{ s.name }}</div>
+          {% if s.requires_api_key %}<span class="tag tag-warn">needs {{ s.api_key_env_var or 'a key' }}</span>{% endif %}
+        </td>
+        <td><span class="badge badge-{{ 'ok' if s.status == 'active' else ('warn' if s.status in ('ready','untested') else ('bad' if s.status == 'blocked' else 'neutral')) }}">{{ s.status }}</span></td>
+        <td class="muted small">{{ s.schedule_tier }}</td>
+        <td class="muted small nowrap">{% if s.last_success_at %}{{ s.last_success_at.strftime('%d %b %Y') }}{% else %}never{% endif %}</td>
+        <td class="r num">{{ "{:,}".format(s.facts) }}</td>
+        <td class="small muted">{{ s.license_default }}
+          {% if not s.redistribution_allowed %}<div><span class="tag tag-warn">no redistribution</span></div>{% endif %}
+        </td>
       </tr>
     {% endfor %}
-    </tbody>
-  </table>
+    </tbody></table></div></div>
 </section>
 
-<section>
-  <h2>Recent runs</h2>
-  <table>
-    <thead><tr><th>Source</th><th>Status</th><th class="r">Seen</th><th class="r">Accepted</th><th>Started</th><th>Error</th></tr></thead>
-    <tbody>
-    {% for r in runs %}
-      <tr><td>{{ r.source_key }}</td><td><span class="pill {{ r.status }}">{{ r.status }}</span></td>
-          <td class="r">{{ "{:,}".format(r.records_seen) }}</td>
-          <td class="r {{ 'bad-text' if r.status == 'success' and r.records_accepted == 0 }}">{{ "{:,}".format(r.records_accepted) }}</td>
-          <td class="muted">{{ r.started_at.strftime('%Y-%m-%d %H:%M') }}</td>
-          <td class="muted small">{{ (r.error_message or '') | truncate(80) }}</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
+<section style="margin-top:var(--sp-5)">
+  <div class="section-head"><h2>Recent runs</h2></div>
+  <div class="panel">
+  {% if runs %}
+    <div class="table-wrap"><table>
+      <thead><tr><th scope="col">Source</th><th scope="col">Result</th>
+        <th scope="col" class="r">Seen</th><th scope="col" class="r">Accepted</th>
+        <th scope="col">Started</th><th scope="col">Error</th></tr></thead>
+      <tbody>
+      {% for r in runs %}
+        {% set empty_success = r.status == 'success' and r.records_accepted == 0 %}
+        <tr class="{{ 'row-bad' if empty_success or r.status == 'failed' }}">
+          <td class="mono">{{ r.source_key }}</td>
+          <td>{% if empty_success %}<span class="badge badge-bad">collected nothing</span>
+              {% else %}<span class="badge badge-{{ 'ok' if r.status == 'success' else ('warn' if r.status == 'partial' else 'bad') }}">{{ r.status }}</span>{% endif %}</td>
+          <td class="r num muted">{{ "{:,}".format(r.records_seen) }}</td>
+          <td class="r num {{ 'bad-text' if empty_success }}">{{ "{:,}".format(r.records_accepted) }}</td>
+          <td class="muted small nowrap">{{ r.started_at.strftime('%d %b %H:%M') }}</td>
+          <td class="muted small">{{ (r.error_message or '') | truncate(60) }}</td>
+        </tr>
+      {% endfor %}
+      </tbody></table></div>
+  {% else %}
+    <div class="empty">{{ icon('clock') }}<h3>No runs yet</h3>
+      <p>Nothing has been collected for this engine.</p></div>
+  {% endif %}
+  </div>
 </section>
 {% endblock %}

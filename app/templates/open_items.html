@@ -1,38 +1,58 @@
 {% extends "base.html" %}
 {% block title %}Open items{% endblock %}
-{% block body %}
-<header class="page"><h1>Open items</h1></header>
-<p class="muted small">Tick things off here instead of hand-editing a project doc.</p>
+{% block crumbs %}<span class="here">Open items</span>{% endblock %}
 
-{% for group, label in [('needs_user', 'Only you can do these'), ('decision', 'Decisions to make'), ('dev', 'Development work')] %}
+{% block body %}
+{% set open_count = items | rejectattr('status', 'in', ['done','dropped']) | list | length %}
+<div class="page-head">
+  <div class="titles">
+    <h1>Open items</h1>
+    <p class="lede">The standing list, as something you tick rather than a document
+      you remember to edit. {{ open_count }} still open.</p>
+  </div>
+</div>
+
+{% for group, label, hint in [
+    ('needs_user', 'Only you can do these', 'registrations and rotations nobody else can perform'),
+    ('decision',   'Decisions to make',     'each one is blocking work behind it'),
+    ('dev',        'Development work',      '')] %}
   {% set rows = items | selectattr('category', 'equalto', group) | list %}
   {% if rows %}
-  <section>
-    <h2>{{ label }}</h2>
-    <table>
-      <thead><tr><th>Item</th><th>Blocks</th><th>Status</th><th></th></tr></thead>
+  <section style="margin-bottom:var(--sp-5)">
+    <div class="section-head">
+      <h2>{{ label }}</h2>
+      {% if hint %}<span class="hint">{{ hint }}</span>{% endif %}
+    </div>
+    <div class="panel"><div class="table-wrap"><table>
+      <thead><tr><th scope="col">Item</th><th scope="col">Blocks</th>
+        <th scope="col" style="width:150px">Status</th></tr></thead>
       <tbody>
       {% for i in rows %}
-        <tr class="{{ 'done-row' if i.status in ('done', 'dropped') }}">
+        <tr class="{{ 'is-done' if i.status in ('done','dropped') }}">
           <td><b>{{ i.title }}</b>
-            {% if i.detail %}<div class="muted small">{{ i.detail }}</div>{% endif %}</td>
+            {% if i.detail %}<div class="sub" style="max-width:62ch">{{ i.detail }}</div>{% endif %}</td>
           <td class="muted small">{{ i.blocks or '—' }}</td>
-          <td><span class="pill {{ 'success' if i.status == 'done' else ('running' if i.status == 'in_progress' else 'muted-pill') }}">{{ i.status }}</span></td>
           <td>
-            <form method="post" action="/open-items/{{ i.id }}/status" class="inline">
-              <select name="status_value" onchange="this.form.submit()">
+            <form method="post" action="/open-items/{{ i.id }}/status" class="inline" data-no-busy="1">
+              <label class="sr-only" for="oi-{{ i.id }}">Status for {{ i.title }}</label>
+              <select id="oi-{{ i.id }}" name="status_value" data-auto>
                 {% for s in ['open', 'in_progress', 'done', 'dropped'] %}
-                  <option value="{{ s }}" {{ 'selected' if i.status == s }}>{{ s }}</option>
+                  <option value="{{ s }}" {{ 'selected' if i.status == s }}>{{ s | replace('_',' ') }}</option>
                 {% endfor %}
               </select>
-              <noscript><button type="submit">Set</button></noscript>
             </form>
           </td>
         </tr>
       {% endfor %}
-      </tbody>
-    </table>
+      </tbody></table></div></div>
   </section>
   {% endif %}
 {% endfor %}
+
+{% if not items %}
+<div class="panel"><div class="empty good">
+  {{ icon('ok') }}<h3>Nothing outstanding</h3>
+  <p>The list is empty. Items seeded from the project notes appear here.</p>
+</div></div>
+{% endif %}
 {% endblock %}

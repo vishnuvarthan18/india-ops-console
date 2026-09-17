@@ -3,26 +3,282 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{% block title %}Ops Console{% endblock %} — India Data Platform</title>
+<meta name="color-scheme" content="light dark">
+<title>{% block title %}Ops{% endblock %} · India Data Platform</title>
 <link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%232f5d50'/><text x='16' y='22' font-family='sans-serif' font-size='16' font-weight='700' fill='white' text-anchor='middle'>i</text></svg>">
 {% block head_extra %}{% endblock %}
 </head>
 <body>
-{% if request.session.get('admin') %}
-<nav>
-  <a class="brand" href="/">India Data Platform</a>
-  <a href="/" class="{{ 'on' if request.url.path == '/' }}">Overview</a>
-  <a href="/alerts" class="{{ 'on' if request.url.path.startswith('/alerts') }}">Alerts &amp; jobs</a>
-  <a href="/engines" class="{{ 'on' if request.url.path.startswith('/engines') }}">Engines</a>
-  <a href="/data" class="{{ 'on' if request.url.path.startswith('/data') or request.url.path.startswith('/entity') }}">Data</a>
-  <a href="/map" class="{{ 'on' if request.url.path.startswith('/map') }}">Map</a>
-  <a href="/keys" class="{{ 'on' if request.url.path.startswith('/keys') }}">Keys</a>
-  <a href="/server" class="{{ 'on' if request.url.path.startswith('/server') }}">Server</a>
-  <a href="/decisions" class="{{ 'on' if request.url.path.startswith('/decisions') }}">Decisions</a>
-  <a href="/open-items" class="{{ 'on' if request.url.path.startswith('/open-items') }}">Open items</a>
-  <form method="post" action="/logout" class="right"><button class="link">Sign out</button></form>
-</nav>
+{% if not request.session.get('admin') %}
+  {% block bare %}{% endblock %}
+{% else %}
+<a class="skip" href="#main">Skip to content</a>
+<div class="app">
+
+  <nav class="sidebar" aria-label="Sections">
+    <a class="brand" href="/">
+      <span class="mark" aria-hidden="true">i</span>
+      <span>India Data Platform<span class="sub">Ops console</span></span>
+    </a>
+
+    {% set p = request.url.path %}
+    <div class="nav-group">
+      <div class="nav-label" id="nav-watch">Watch</div>
+      <div role="group" aria-labelledby="nav-watch">
+        <a class="nav-item {{ 'on' if p == '/' }}" href="/" {{ 'aria-current=page' if p == '/' }}>
+          {{ icon('home') }} Overview</a>
+        <a class="nav-item {{ 'on' if p.startswith('/alerts') or p.startswith('/jobs') }}" href="/alerts">
+          {{ icon('bell') }} Alerts &amp; jobs
+          {% if nav_alerts %}<span class="count">{{ nav_alerts }}</span>{% endif %}</a>
+        <a class="nav-item {{ 'on' if p.startswith('/server') }}" href="/server">
+          {{ icon('server') }} Server</a>
+      </div>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label" id="nav-explore">Explore</div>
+      <div role="group" aria-labelledby="nav-explore">
+        <a class="nav-item {{ 'on' if p.startswith('/engines') }}" href="/engines">
+          {{ icon('layers') }} Engines</a>
+        <a class="nav-item {{ 'on' if p.startswith('/data') or p.startswith('/entity') }}" href="/data">
+          {{ icon('table') }} Data</a>
+        <a class="nav-item {{ 'on' if p.startswith('/map') }}" href="/map">
+          {{ icon('map') }} Map</a>
+      </div>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label" id="nav-manage">Manage</div>
+      <div role="group" aria-labelledby="nav-manage">
+        <a class="nav-item {{ 'on' if p.startswith('/keys') }}" href="/keys">
+          {{ icon('key') }} API keys
+          {% if nav_keys_pending %}<span class="count">{{ nav_keys_pending }}</span>{% endif %}</a>
+        <a class="nav-item {{ 'on' if p.startswith('/open-items') }}" href="/open-items">
+          {{ icon('check') }} Open items</a>
+        <a class="nav-item {{ 'on' if p.startswith('/decisions') }}" href="/decisions">
+          {{ icon('book') }} Decisions</a>
+      </div>
+    </div>
+
+    <div class="sidebar-foot">
+      <button class="nav-item" style="width:100%;background:none;border:0;cursor:pointer;font:inherit"
+              data-open-palette type="button">
+        {{ icon('search') }} Jump to… <kbd style="margin-left:auto">⌘K</kbd>
+      </button>
+      <button class="nav-item" style="width:100%;background:none;border:0;cursor:pointer;font:inherit"
+              id="theme-btn" type="button" aria-label="Switch colour theme">
+        {{ icon('theme') }} <span id="theme-label">Theme</span>
+      </button>
+      <form method="post" action="/logout">
+        <button class="nav-item" style="width:100%;background:none;border:0;cursor:pointer;font:inherit" type="submit">
+          {{ icon('exit') }} Sign out</button>
+      </form>
+    </div>
+  </nav>
+
+  <div class="main">
+    <header class="topbar">
+      <button class="btn btn-ghost btn-sm menu-btn" type="button" id="menu-btn"
+              aria-label="Open navigation" aria-expanded="false">{{ icon('menu') }}</button>
+      <nav class="crumbs" aria-label="Breadcrumb">
+        {% block crumbs %}<span class="here">Overview</span>{% endblock %}
+      </nav>
+      <div class="topbar-actions">
+        {% block topbar_actions %}{% endblock %}
+      </div>
+    </header>
+
+    <main class="content" id="main">
+      {% block body %}{% endblock %}
+    </main>
+  </div>
+</div>
+
+<dialog id="palette" aria-label="Jump to a page">
+  <input type="search" id="pal-input" placeholder="Jump to a page or engine…" autocomplete="off" aria-controls="pal-list">
+  <ul id="pal-list"></ul>
+  <div class="pal-foot"><kbd>↑</kbd> <kbd>↓</kbd> to move · <kbd>↵</kbd> to open · <kbd>esc</kbd> to close</div>
+</dialog>
+
+<div id="toasts" aria-live="polite" aria-atomic="false"></div>
+
+<script>
+/* Small, dependency-free behaviour. Everything here degrades: without JS the
+   console is still a complete, navigable, server-rendered site. */
+(function () {
+  "use strict";
+
+  /* --- toasts --- */
+  window.toast = function (msg) {
+    var wrap = document.getElementById("toasts");
+    var el = document.createElement("div");
+    el.className = "toast"; el.textContent = msg;
+    wrap.appendChild(el);
+    setTimeout(function () { el.remove(); }, 3200);
+  };
+
+  /* --- theme: follows the system until the user overrides it --- */
+  var THEME_KEY = "ops-theme";
+  function applyTheme(v) {
+    if (v === "system") document.documentElement.removeAttribute("data-theme");
+    else document.documentElement.setAttribute("data-theme", v);
+    var label = document.getElementById("theme-label");
+    if (label) label.textContent = v === "system" ? "Theme: auto"
+      : (v === "dark" ? "Theme: dark" : "Theme: light");
+  }
+  var saved = "system";
+  try { saved = localStorage.getItem(THEME_KEY) || "system"; } catch (e) {}
+  applyTheme(saved);
+  var tbtn = document.getElementById("theme-btn");
+  if (tbtn) tbtn.addEventListener("click", function () {
+    var order = ["system", "light", "dark"];
+    saved = order[(order.indexOf(saved) + 1) % order.length];
+    try { localStorage.setItem(THEME_KEY, saved); } catch (e) {}
+    applyTheme(saved);
+  });
+
+  /* --- mobile navigation --- */
+  var mb = document.getElementById("menu-btn");
+  if (mb) mb.addEventListener("click", function () {
+    var open = document.body.classList.toggle("nav-open");
+    mb.setAttribute("aria-expanded", String(open));
+  });
+  document.addEventListener("click", function (e) {
+    if (document.body.classList.contains("nav-open") &&
+        !e.target.closest(".sidebar") && !e.target.closest("#menu-btn")) {
+      document.body.classList.remove("nav-open");
+      if (mb) mb.setAttribute("aria-expanded", "false");
+    }
+  });
+
+  /* --- command palette --- */
+  var PAGES = [
+    {t: "Overview", u: "/", w: "Watch"},
+    {t: "Alerts & jobs", u: "/alerts", w: "Watch"},
+    {t: "Server & infrastructure", u: "/server", w: "Watch"},
+    {t: "Engines", u: "/engines", w: "Explore"},
+    {t: "Data browser", u: "/data", w: "Explore"},
+    {t: "Map", u: "/map", w: "Explore"},
+    {t: "Records missing coordinates", u: "/data?geom=no", w: "Explore"},
+    {t: "Restricted records", u: "/data?precision=district_aggregate", w: "Explore"},
+    {t: "API keys", u: "/keys", w: "Manage"},
+    {t: "Open items", u: "/open-items", w: "Manage"},
+    {t: "Decisions log", u: "/decisions", w: "Manage"}
+  ].concat(window.PALETTE_EXTRA || []);
+
+  var dlg = document.getElementById("palette");
+  var input = document.getElementById("pal-input");
+  var list = document.getElementById("pal-list");
+  var sel = 0, shown = [];
+
+  function render(q) {
+    q = (q || "").toLowerCase().trim();
+    shown = PAGES.filter(function (p) {
+      return !q || p.t.toLowerCase().indexOf(q) > -1 || p.w.toLowerCase().indexOf(q) > -1;
+    }).slice(0, 8);
+    sel = 0;
+    list.innerHTML = shown.length ? "" :
+      '<li><a href="#" aria-disabled="true" style="color:var(--ink-3)">Nothing matches that</a></li>';
+    shown.forEach(function (p, i) {
+      var li = document.createElement("li");
+      if (i === 0) li.className = "sel";
+      var a = document.createElement("a");
+      a.href = p.u; a.textContent = p.t;
+      var s = document.createElement("span");
+      s.className = "where"; s.textContent = p.w;
+      a.appendChild(s); li.appendChild(a); list.appendChild(li);
+    });
+  }
+  function move(d) {
+    var items = list.querySelectorAll("li");
+    if (!items.length) return;
+    items[sel] && items[sel].classList.remove("sel");
+    sel = (sel + d + items.length) % items.length;
+    items[sel].classList.add("sel");
+    items[sel].scrollIntoView({block: "nearest"});
+  }
+  function open() {
+    if (!dlg || dlg.open) return;
+    render(""); dlg.showModal(); input.value = ""; input.focus();
+  }
+  if (dlg) {
+    input.addEventListener("input", function () { render(input.value); });
+    input.addEventListener("keydown", function (e) {
+      if (e.key === "ArrowDown") { e.preventDefault(); move(1); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); move(-1); }
+      else if (e.key === "Enter") {
+        e.preventDefault();
+        var a = list.querySelectorAll("li")[sel] && list.querySelectorAll("li")[sel].querySelector("a");
+        if (a && a.getAttribute("href") !== "#") window.location = a.href;
+      }
+    });
+    document.querySelectorAll("[data-open-palette]").forEach(function (b) {
+      b.addEventListener("click", open);
+    });
+  }
+  document.addEventListener("keydown", function (e) {
+    var typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); open(); return; }
+    if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === "/") { e.preventDefault(); open(); return; }
+    /* g-then-key: the shortcut pattern people already know from GitHub */
+    if (e.key === "g") {
+      var once = function (ev) {
+        var map = {o: "/", a: "/alerts", e: "/engines", d: "/data",
+                   m: "/map", s: "/server", k: "/keys", i: "/open-items"};
+        if (map[ev.key]) window.location = map[ev.key];
+        document.removeEventListener("keydown", once, true);
+      };
+      document.addEventListener("keydown", once, true);
+      setTimeout(function () { document.removeEventListener("keydown", once, true); }, 1200);
+    }
+  });
+
+  /* --- confirm before anything privileged --- */
+  document.querySelectorAll("form[data-confirm]").forEach(function (f) {
+    f.addEventListener("submit", function (e) {
+      if (f.dataset.confirmed === "1") return;
+      e.preventDefault();
+      var d = document.createElement("dialog");
+      d.innerHTML =
+        '<div class="dlg-head"><h2>' + f.dataset.confirmTitle + '</h2></div>' +
+        '<div class="dlg-body">' + f.dataset.confirm + '</div>' +
+        '<div class="dlg-foot">' +
+        '<button class="btn" value="no">Cancel</button>' +
+        '<button class="btn btn-primary" value="yes">' + (f.dataset.confirmOk || "Continue") + '</button>' +
+        '</div>';
+      document.body.appendChild(d);
+      d.querySelectorAll("button").forEach(function (b) {
+        b.addEventListener("click", function () {
+          d.close();
+          d.remove();
+          if (b.value === "yes") { f.dataset.confirmed = "1"; f.requestSubmit(); }
+        });
+      });
+      d.showModal();
+    });
+  });
+
+  /* --- a submitted button says so, so nobody double-clicks a harvest --- */
+  document.querySelectorAll("form").forEach(function (f) {
+    f.addEventListener("submit", function () {
+      var b = f.querySelector("button[type=submit], button:not([type])");
+      if (b && !f.dataset.noBusy) {
+        b.setAttribute("aria-disabled", "true");
+        b.dataset.was = b.textContent;
+        b.textContent = b.dataset.busy || "Working…";
+      }
+    });
+  });
+
+  /* --- auto-submitting selects, without losing the keyboard user --- */
+  document.querySelectorAll("select[data-auto]").forEach(function (s) {
+    s.addEventListener("change", function () { s.form && s.form.requestSubmit(); });
+  });
+})();
+</script>
+{% block scripts %}{% endblock %}
 {% endif %}
-<main>{% block body %}{% endblock %}</main>
 </body>
 </html>

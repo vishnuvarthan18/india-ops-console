@@ -1,23 +1,38 @@
 {% extends "base.html" %}
 {% block title %}Engines{% endblock %}
+{% block crumbs %}<span class="here">Engines</span>{% endblock %}
+
 {% block body %}
-<header class="page"><h1>Engines</h1></header>
-<section class="cards">
+<div class="page-head">
+  <div class="titles">
+    <h1>Engines</h1>
+    <p class="lede">Eight collectors, each its own codebase, all writing through one
+      gatekeeper into one database.</p>
+  </div>
+</div>
+
+<div class="cards">
 {% for e in engines %}
-  <a class="card" href="/engines/{{ e.key }}">
-    <h3>{{ e.name }}</h3>
-    <p class="muted small">{{ e.description or '' }}</p>
-    <div class="kv">
-      <span><b>{{ "{:,}".format(e.entities) }}</b> entities</span>
-      <span><b>{{ "{:,}".format(e.facts) }}</b> facts</span>
-      <span><b>{{ e.sources_active }}/{{ e.sources }}</b> sources active</span>
+  <a class="tile" href="/engines/{{ e.key }}" style="gap:var(--sp-3)">
+    <div style="display:flex;align-items:baseline;gap:var(--sp-2);order:-1">
+      <h3 style="flex:1">{{ e.name | replace(' Engine','') }}</h3>
+      {% if not e.entities %}<span class="badge badge-neutral no-dot">no data</span>
+      {% elif e.last_run_status == 'failed' %}<span class="badge badge-bad">last run failed</span>
+      {% endif %}
     </div>
-    <p class="muted small">
-      {% if e.last_run_at %}Last run <span class="pill {{ e.last_run_status }}">{{ e.last_run_status }}</span>
-        {{ e.last_run_at.strftime('%Y-%m-%d %H:%M') }}
-      {% else %}<span class="tag warn">never run</span>{% endif %}
-    </p>
+    <div style="display:flex;gap:var(--sp-5)">
+      <div><div class="value" style="font-size:20px">{{ "{:,}".format(e.entities) }}</div>
+           <div class="label">entities</div></div>
+      <div><div class="value" style="font-size:20px">{{ "{:,}".format(e.facts) }}</div>
+           <div class="label">facts</div></div>
+      <div><div class="value" style="font-size:20px">{{ e.sources_active }}<span class="of">/{{ e.sources }}</span></div>
+           <div class="label">sources</div></div>
+    </div>
+    <div class="foot">
+      {% if e.last_run_at %}Last run {{ e.last_run_at.strftime('%d %b, %H:%M') }}
+      {% else %}Never run{% endif %}
+    </div>
   </a>
 {% endfor %}
-</section>
+</div>
 {% endblock %}

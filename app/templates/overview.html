@@ -1,85 +1,202 @@
 {% extends "base.html" %}
 {% block title %}Overview{% endblock %}
+{% block crumbs %}<span class="here">Overview</span>{% endblock %}
+{% block topbar_actions %}
+  <button class="btn btn-sm btn-ghost" type="button" data-open-palette>{{ icon('search') }} Jump to…</button>
+{% endblock %}
+
 {% block body %}
-<header class="page">
-  <h1>Overview</h1>
-  <span class="light {{ light }}">
-    {% if light == 'green' %}All clear{% elif light == 'amber' %}Needs a look{% else %}Something is broken{% endif %}
-  </span>
-</header>
+{# The banner answers the only question that matters on arrival: is anything
+   wrong, and what do I do about it. Actions live here, not three clicks away. #}
+<div class="status-banner {{ light }}" role="status">
+  <span class="dot" aria-hidden="true"></span>
+  <div>
+    <div class="msg">
+      {% if light == 'green' %}Everything is running
+      {% elif light == 'amber' %}Worth a look
+      {% else %}Something needs attention{% endif %}
+    </div>
+    <div class="detail">
+      {% if light == 'green' %}
+        All {{ job_count }} jobs reporting in, no stale sources, nothing rejected.
+      {% else %}
+        {% set bits = [] %}
+        {% if counts.heartbeat_alerts %}{% set _ = bits.append(counts.heartbeat_alerts|string + ' job alert' + ('' if counts.heartbeat_alerts == 1 else 's')) %}{% endif %}
+        {% if counts.empty_successful_runs %}{% set _ = bits.append(counts.empty_successful_runs|string + ' run' + ('' if counts.empty_successful_runs == 1 else 's') + ' that collected nothing') %}{% endif %}
+        {% if counts.stale_sources %}{% set _ = bits.append(counts.stale_sources|string + ' stale source' + ('' if counts.stale_sources == 1 else 's')) %}{% endif %}
+        {% if counts.open_rejections %}{% set _ = bits.append(counts.open_rejections|string + ' unreplayed rejection group' + ('' if counts.open_rejections == 1 else 's')) %}{% endif %}
+        {{ bits | join(' · ') }}
+      {% endif %}
+    </div>
+  </div>
+  <div class="acts">
+    {% if light != 'green' %}<a class="btn btn-primary btn-sm" href="/alerts">{{ icon('alert') }} Review</a>{% endif %}
+    <a class="btn btn-sm" href="/server">{{ icon('server') }} Server</a>
+  </div>
+</div>
 
-<section class="tiles">
-  <div class="tile"><span class="n">{{ "{:,}".format(totals.entities or 0) }}</span><span class="l">Entities</span></div>
-  <div class="tile"><span class="n">{{ "{:,}".format(totals.facts or 0) }}</span><span class="l">Facts</span></div>
-  <div class="tile"><span class="n">{{ "{:,}".format(totals.taxa or 0) }}</span><span class="l">Taxa</span></div>
-  <div class="tile"><span class="n">{{ totals.engines_with_data or 0 }}<span class="of">/{{ totals.engines or 0 }}</span></span><span class="l">Engines with data</span></div>
-  <div class="tile"><span class="n">{{ totals.sources_active or 0 }}<span class="of">/{{ totals.sources or 0 }}</span></span><span class="l">Active sources</span></div>
-</section>
-
+{# What needs attention, with the action inline. This is the section that saves
+   the trip to a terminal. #}
+{% if attention %}
 <section>
-  <h2>Alerts</h2>
+  <div class="section-head">
+    <h2>Needs attention</h2>
+    <span class="hint">{{ attention | length }} item{{ '' if attention|length == 1 else 's' }}</span>
+    <a class="more" href="/alerts">All alerts &amp; jobs →</a>
+  </div>
+  <div class="panel">
+    <div class="table-wrap">
+      <table>
+        <caption class="sr-only">Jobs and sources needing attention</caption>
+        <thead><tr><th scope="col">What</th><th scope="col">Why</th><th scope="col">Last seen</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+        <tbody>
+        {% for a in attention %}
+          <tr class="row-bad">
+            <td><b>{{ a.subject }}</b><div class="sub">{{ a.kind_label }}</div></td>
+            <td><span class="badge badge-{{ 'bad' if a.severity == 'critical' else 'warn' }}">{{ a.reason_label }}</span></td>
+            <td class="muted small nowrap">{{ a.when }}</td>
+            <td>
+              <div class="cell-actions">
+              {% if not a.unit and a.link %}
+                <a class="btn btn-sm" href="{{ a.link }}">{{ icon('layers') }} Open engine</a>
+              {% endif %}
+              {% if a.unit %}
+                <a class="btn btn-sm" href="/jobs/{{ a.unit }}">{{ icon('search') }} Inspect</a>
+                {% if control_ok %}
+                <form method="post" action="/jobs/{{ a.unit }}/run" class="inline"
+                      data-confirm="This starts {{ a.unit }} now, outside its schedule. Harvests are idempotent, so running one again is safe."
+                      data-confirm-title="Run {{ a.subject }} now?" data-confirm-ok="Run it">
+                  <button class="btn btn-sm btn-primary" type="submit" data-busy="Starting…">{{ icon('play') }} Run</button>
+                </form>
+                {% endif %}
+              {% endif %}
+              </div>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<section style="margin-top:var(--sp-5)">
+  <div class="section-head"><h2>What's in the platform</h2></div>
   <div class="tiles">
-    <a class="tile {{ 'bad' if counts.heartbeat_alerts }}" href="/alerts">
-      <span class="n">{{ counts.heartbeat_alerts or 0 }}</span><span class="l">Job alerts</span></a>
-    <a class="tile {{ 'bad' if counts.empty_successful_runs }}" href="/alerts">
-      <span class="n">{{ counts.empty_successful_runs or 0 }}</span><span class="l">Ran but collected nothing</span></a>
-    <a class="tile {{ 'warn' if counts.stale_sources }}" href="/alerts">
-      <span class="n">{{ counts.stale_sources or 0 }}</span><span class="l">Stale sources</span></a>
-    <a class="tile {{ 'warn' if counts.open_rejections }}" href="/alerts">
-      <span class="n">{{ counts.open_rejections or 0 }}</span><span class="l">Unreplayed rejections</span></a>
+    <a class="tile" href="/data">
+      <span class="label">Entities</span>
+      <span class="value">{{ "{:,}".format(totals.entities or 0) }}</span>
+      <span class="foot">{{ "{:,}".format(totals.facts or 0) }} facts recorded</span></a>
+    <a class="tile" href="/data?engine=living_species">
+      <span class="label">Species</span>
+      <span class="value">{{ "{:,}".format(totals.taxa or 0) }}</span>
+      <span class="foot">{{ "{:,}".format(totals.occurrences or 0) }} occurrences</span></a>
+    <a class="tile" href="/engines">
+      <span class="label">Engines with data</span>
+      <span class="value">{{ totals.engines_with_data or 0 }}<span class="of">/{{ totals.engines or 0 }}</span></span>
+      <span class="foot">{{ job_count }} jobs on timers</span></a>
+    <a class="tile" href="/engines">
+      <span class="label">Active sources</span>
+      <span class="value">{{ totals.sources_active or 0 }}<span class="of">/{{ totals.sources or 0 }}</span></span>
+      <span class="foot">the rest are ready or gaps</span></a>
+    <a class="tile {{ 'is-warn' if keys_pending }}" href="/keys">
+      <span class="label">Keys pending</span>
+      <span class="value">{{ keys_pending }}</span>
+      <span class="foot">{{ 'blocking engine work' if keys_pending else 'all registered' }}</span></a>
   </div>
-  <p class="muted small">A job that finishes successfully while accepting zero records is treated as
-  seriously as a hard failure — it is the failure mode that hides.</p>
 </section>
 
-<section>
-  <h2>Facts written, last 30 days</h2>
-  {% set peak = (growth | map(attribute='facts') | max) or 1 %}
-  <div class="spark">
-    {% for d in growth %}
-      <span class="bar" style="height:{{ (d.facts / peak * 100) | round(1) }}%"
-            title="{{ d.day }}: {{ '{:,}'.format(d.facts) }} facts"></span>
-    {% endfor %}
+<section class="two-col" style="margin-top:var(--sp-5)">
+  <div class="panel">
+    <div class="panel-head">
+      <h2>Facts written</h2>
+      <span class="right muted small">last 30 days</span>
+    </div>
+    <div class="panel-body">
+      {% set peak = (growth | map(attribute='facts') | max) or 1 %}
+      <div class="spark" role="img"
+           aria-label="Daily facts written over the last 30 days, peak {{ peak }} per day">
+        {% for d in growth %}
+          <span class="bar {{ 'zero' if d.facts == 0 }}"
+                style="height:{{ (3 + (d.facts / peak * 97)) | round(1) }}%"
+                title="{{ d.day }}: {{ '{:,}'.format(d.facts) }}"></span>
+        {% endfor %}
+      </div>
+      <p class="small muted" style="margin:var(--sp-3) 0 0">
+        Peak {{ "{:,}".format(peak) }} a day. A flat line means the jobs are running
+        but bringing nothing home.
+      </p>
+    </div>
   </div>
-  <p class="muted small">Peak {{ "{:,}".format(peak) }}/day. A flat line here means the jobs are running but bringing nothing home.</p>
+
+  <div class="panel">
+    <div class="panel-head">
+      <h2>Engines</h2>
+      <a class="right" href="/engines">All engines →</a>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th scope="col">Engine</th><th scope="col" class="r">Entities</th><th scope="col">Last run</th></tr></thead>
+        <tbody>
+        {% for e in engines %}
+          <tr>
+            <td><a href="/engines/{{ e.key }}">{{ e.name | replace(' Engine','') }}</a></td>
+            <td class="r num">{{ "{:,}".format(e.entities) if e.entities else '—' }}</td>
+            <td class="nowrap">
+              {% if e.last_run_at %}
+                <span class="badge badge-{{ 'ok' if e.last_run_status == 'success' else ('warn' if e.last_run_status == 'partial' else 'bad') }}">{{ e.last_run_status }}</span>
+                <span class="muted small">{{ e.last_run_at.strftime('%d %b') }}</span>
+              {% else %}<span class="badge badge-neutral no-dot">never run</span>{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
 </section>
 
-<section>
-  <h2>Engines</h2>
-  <table>
-    <thead><tr><th>Engine</th><th class="r">Entities</th><th class="r">Facts</th><th class="r">Sources</th><th>Last run</th></tr></thead>
-    <tbody>
-    {% for e in engines %}
-      <tr>
-        <td><a href="/engines/{{ e.key }}">{{ e.name }}</a></td>
-        <td class="r">{{ "{:,}".format(e.entities) }}</td>
-        <td class="r">{{ "{:,}".format(e.facts) }}</td>
-        <td class="r">{{ e.sources_active }}/{{ e.sources }}</td>
-        <td>{% if e.last_run_at %}<span class="pill {{ e.last_run_status }}">{{ e.last_run_status }}</span>
-            {{ e.last_run_at.strftime('%Y-%m-%d %H:%M') }}{% else %}<span class="muted">never</span>{% endif %}</td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-</section>
-
-<section>
-  <h2>Recent runs</h2>
-  <table>
-    <thead><tr><th>Source</th><th>Engine</th><th>Status</th><th class="r">Seen</th><th class="r">Accepted</th><th class="r">Took</th><th>Finished</th></tr></thead>
-    <tbody>
-    {% for r in runs %}
-      <tr>
-        <td>{{ r.source_key }}</td>
-        <td class="muted">{{ r.engine_key }}</td>
-        <td><span class="pill {{ r.status }}">{{ r.status }}</span></td>
-        <td class="r">{{ "{:,}".format(r.records_seen) }}</td>
-        <td class="r {{ 'bad-text' if r.status == 'success' and r.records_accepted == 0 }}">{{ "{:,}".format(r.records_accepted) }}</td>
-        <td class="r muted">{% if r.duration_s %}{{ r.duration_s | round | int }}s{% else %}—{% endif %}</td>
-        <td class="muted">{% if r.finished_at %}{{ r.finished_at.strftime('%Y-%m-%d %H:%M') }}{% else %}running{% endif %}</td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
+<section style="margin-top:var(--sp-5)">
+  <div class="section-head">
+    <h2>Recent runs</h2>
+    <span class="hint">a successful run that accepted nothing is flagged — it is the failure that hides</span>
+  </div>
+  <div class="panel">
+    {% if runs %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th scope="col">Source</th><th scope="col">Engine</th><th scope="col">Result</th>
+          <th scope="col" class="r">Seen</th><th scope="col" class="r">Accepted</th>
+          <th scope="col" class="r">Took</th><th scope="col">Finished</th>
+        </tr></thead>
+        <tbody>
+        {% for r in runs %}
+          {% set empty_success = r.status == 'success' and r.records_accepted == 0 %}
+          <tr class="{{ 'row-bad' if empty_success or r.status == 'failed' }}">
+            <td class="mono">{{ r.source_key }}</td>
+            <td class="muted small">{{ r.engine_name | replace(' Engine','') }}</td>
+            <td>
+              {% if empty_success %}<span class="badge badge-bad">collected nothing</span>
+              {% else %}<span class="badge badge-{{ 'ok' if r.status == 'success' else ('warn' if r.status == 'partial' else ('bad' if r.status == 'failed' else 'neutral')) }}">{{ r.status }}</span>{% endif %}
+            </td>
+            <td class="r num muted">{{ "{:,}".format(r.records_seen) }}</td>
+            <td class="r num {{ 'bad-text' if empty_success }}">{{ "{:,}".format(r.records_accepted) }}</td>
+            <td class="r num muted small">{% if r.duration_s %}{{ r.duration_s | round | int }}s{% else %}—{% endif %}</td>
+            <td class="muted small nowrap">{% if r.finished_at %}{{ r.finished_at.strftime('%d %b %H:%M') }}{% else %}<span class="badge badge-accent">running</span>{% endif %}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty">
+      {{ icon('empty') }}
+      <h3>No runs recorded yet</h3>
+      <p>Jobs report here as soon as they fire. If this stays empty, the timers may not be installed.</p>
+    </div>
+    {% endif %}
+  </div>
 </section>
 {% endblock %}

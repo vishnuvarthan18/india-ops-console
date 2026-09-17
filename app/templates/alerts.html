@@ -1,180 +1,192 @@
 {% extends "base.html" %}
-{% block title %}Alerts &amp; jobs
-<section>
-  <h2>Alert history</h2>
-  <p class="muted small">Every episode, including ones that have cleared. The live views above
-  forget a problem the moment it resolves; this is what remembers it.</p>
-  {% if history %}
-  <table>
-    <thead><tr><th>What</th><th>Severity</th><th>Opened</th><th>Resolved</th><th>Lasted</th><th>Notified</th></tr></thead>
-    <tbody>
-    {% for h in history %}
-      <tr class="{{ 'row-bad' if not h.resolved_at }}">
-        <td>{{ h.subject }}<div class="muted small">{{ h.kind }} · {{ h.detail | truncate(90) }}</div></td>
-        <td><span class="pill {{ 'failed' if h.severity == 'critical' else 'partial' }}">{{ h.severity }}</span></td>
-        <td class="muted small">{{ h.opened_at.strftime('%Y-%m-%d %H:%M') }}</td>
-        <td class="muted small">{% if h.resolved_at %}{{ h.resolved_at.strftime('%Y-%m-%d %H:%M') }}{% else %}<b>still open</b>{% endif %}</td>
-        <td class="muted small">{{ h.duration | string | truncate(14, true, '') }}</td>
-        <td class="muted small">{{ 'yes' if h.notified_at else '—' }}</td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <p class="muted">No episodes recorded yet. The notifier timer writes here every 10 minutes.</p>
-  {% endif %}
-</section>
+{% block title %}Alerts &amp; jobs{% endblock %}
+{% block crumbs %}<span class="here">Alerts &amp; jobs</span>{% endblock %}
 
-{% if actions %}
-<section>
-  <h2>Recent privileged actions</h2>
-  <p class="muted small">Every run and rotation the console asked the control service to perform,
-  recorded before it was attempted.</p>
-  <table>
-    <thead><tr><th>Action</th><th>Target</th><th>When</th><th>Result</th></tr></thead>
-    <tbody>
-    {% for a in actions %}
-      <tr><td>{{ a.action }}</td><td class="mono small">{{ a.target }}</td>
-          <td class="muted small">{{ a.requested_at.strftime('%Y-%m-%d %H:%M') }}</td>
-          <td>{% if a.ok is none %}<span class="pill">pending</span>
-              {% elif a.ok %}<span class="pill success">ok</span>
-              {% else %}<span class="pill failed">failed</span>{% endif %}
-              <span class="muted small">{{ (a.detail or '') | truncate(60) }}</span></td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
-</section>
-{% endif %}
-
-{% if not control_ok %}
-<p class="muted small">Run controls are hidden: the control service is not configured
-(<code>CONTROL_TOKEN</code> unset in the console's .env).</p>
-{% endif %}
-{% endblock %}
 {% block body %}
-<header class="page"><h1>Alerts &amp; jobs</h1></header>
+<div class="page-head">
+  <div class="titles">
+    <h1>Alerts &amp; jobs</h1>
+    <p class="lede">Each job is judged against its own rhythm. A monthly job is not late
+      until it is genuinely late — that is what stops this list being permanently red.</p>
+  </div>
+</div>
 
+{% set alerting = jobs | selectattr('is_alerting') | list %}
+{% set healthy  = jobs | rejectattr('is_alerting') | list %}
+
+{% if alerting %}
 <section>
-  <h2>All jobs</h2>
-  <p class="muted small">Each job's tolerated silence comes from its declared cadence, not a flat
-  36-hour rule. A monthly job is not late until it is genuinely late.</p>
-  <table>
-    <thead><tr><th>Job</th><th>Cadence</th><th>Last ping</th><th>Status</th><th>Silent for</th><th>Tolerance</th><th>Alert</th><th></th></tr></thead>
-    <tbody>
-    {% for j in jobs %}
-      <tr class="{{ 'row-bad' if j.is_alerting }}">
-        <td>{{ j.job_key }}</td>
-        <td class="muted">{{ j.cadence or '—' }}{% if j.window_source == 'override' %} <span class="tag">override</span>{% elif j.window_source == 'legacy_default' %} <span class="tag warn">undeclared</span>{% endif %}</td>
-        <td class="muted">{% if j.last_ping_at %}{{ j.last_ping_at.strftime('%Y-%m-%d %H:%M') }}{% else %}never{% endif %}</td>
-        <td>{% if j.last_status %}<span class="pill {{ j.last_status }}">{{ j.last_status }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
-        <td class="muted">{{ j.silence | string | truncate(16, true, '') if j.silence else '—' }}</td>
-        <td class="muted">{{ j.effective_silence_after }}</td>
-        <td>{% if j.is_alerting %}<span class="pill failed">{{ j.alert_reason }}</span>{% else %}<span class="pill success">ok</span>{% endif %}</td>
-        <td>{% set unit = j.job_key + '.service' %}
-          {% if unit in control_units %}<a class="small" href="/jobs/{{ unit }}">open →</a>{% endif %}</td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
+  <div class="section-head">
+    <h2>Needs attention</h2>
+    <span class="hint">{{ alerting | length }} of {{ jobs | length }} jobs</span>
+  </div>
+  {{ job_table(alerting, control_units, control_ok, true) }}
+</section>
+{% else %}
+<div class="panel" style="margin-bottom:var(--sp-5)">
+  <div class="empty good">
+    {{ icon('ok') }}
+    <h3>All {{ jobs | length }} jobs are healthy</h3>
+    <p>Every job has reported within the window its own cadence allows.</p>
+  </div>
+</div>
+{% endif %}
+
+<section style="margin-top:var(--sp-5)">
+  <div class="section-head">
+    <h2>{{ 'All other jobs' if alerting else 'All jobs' }}</h2>
+    <span class="hint">{{ healthy | length }} reporting normally</span>
+  </div>
+  {{ job_table(healthy, control_units, control_ok, false) }}
 </section>
 
-<section>
-  <h2>Ran but collected nothing <span class="muted small">(last 30 days)</span></h2>
-  {% if alerts.empty_successful_runs %}
-  <table>
-    <thead><tr><th>Source</th><th class="r">Seen</th><th class="r">Accepted</th><th>Finished</th></tr></thead>
-    <tbody>
-    {% for r in alerts.empty_successful_runs %}
-      <tr><td>{{ r.source_key }}</td><td class="r">{{ r.records_seen }}</td>
-          <td class="r bad-text">{{ r.records_accepted }}</td>
-          <td class="muted">{{ r.finished_at.strftime('%Y-%m-%d %H:%M') }}</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  {% else %}<p class="ok">None. Every successful run brought data back.</p>{% endif %}
-</section>
+{% if alerts.stale_sources or alerts.open_rejections %}
+<section class="two-col" style="margin-top:var(--sp-5)">
+  <div class="panel">
+    <div class="panel-head"><h2>Stale sources</h2>
+      <span class="right muted small">past their absolute limit</span></div>
+    {% if alerts.stale_sources %}
+    <div class="table-wrap"><table>
+      <thead><tr><th scope="col">Source</th><th scope="col">Engine</th><th scope="col">Last success</th></tr></thead>
+      <tbody>
+      {% for s in alerts.stale_sources %}
+        <tr><td class="mono">{{ s.key }}</td><td class="muted small">{{ s.engine }}</td>
+            <td class="muted small nowrap">{% if s.last_success %}{{ s.last_success.strftime('%d %b %Y') }}{% else %}never{% endif %}</td></tr>
+      {% endfor %}
+      </tbody></table></div>
+    {% else %}<div class="empty good">{{ icon('ok') }}<h3>None</h3></div>{% endif %}
+  </div>
 
-<section>
-  <h2>Stale sources</h2>
-  <p class="muted small">Past their absolute staleness ceiling — a check that does not depend on the
-  scheduler being correct.</p>
-  {% if alerts.stale_sources %}
-  <table>
-    <thead><tr><th>Source</th><th>Engine</th><th>Tier</th><th>Last success</th><th>Age</th></tr></thead>
-    <tbody>
-    {% for s in alerts.stale_sources %}
-      <tr><td>{{ s.key }}</td><td class="muted">{{ s.engine }}</td><td class="muted">{{ s.schedule_tier }}</td>
-          <td class="muted">{% if s.last_success %}{{ s.last_success.strftime('%Y-%m-%d') }}{% else %}never{% endif %}</td>
-          <td>{{ s.age or '—' }}</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  {% else %}<p class="ok">None.</p>{% endif %}
+  <div class="panel">
+    <div class="panel-head"><h2>Rejected records</h2>
+      <span class="right muted small">kept for replay</span></div>
+    {% if alerts.open_rejections %}
+    <div class="table-wrap"><table>
+      <thead><tr><th scope="col">Reason</th><th scope="col" class="r">Count</th><th scope="col">Latest</th></tr></thead>
+      <tbody>
+      {% for r in alerts.open_rejections %}
+        <tr><td class="mono">{{ r.reason_code }}</td><td class="r num">{{ r.n }}</td>
+            <td class="muted small nowrap">{{ r.latest.strftime('%d %b %H:%M') }}</td></tr>
+      {% endfor %}
+      </tbody></table></div>
+    {% else %}<div class="empty good">{{ icon('ok') }}<h3>None</h3></div>{% endif %}
+  </div>
 </section>
+{% endif %}
 
-<section>
-  <h2>Unreplayed rejections</h2>
-  {% if alerts.open_rejections %}
-  <table>
-    <thead><tr><th>Reason</th><th class="r">Count</th><th>Latest</th></tr></thead>
-    <tbody>
-    {% for r in alerts.open_rejections %}
-      <tr><td>{{ r.reason_code }}</td><td class="r">{{ r.n }}</td>
-          <td class="muted">{{ r.latest.strftime('%Y-%m-%d %H:%M') }}</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  {% else %}<p class="ok">None.</p>{% endif %}
-</section>
-
-<section>
-  <h2>Alert history</h2>
-  <p class="muted small">Every episode, including ones that have cleared. The live views above
-  forget a problem the moment it resolves; this is what remembers it.</p>
-  {% if history %}
-  <table>
-    <thead><tr><th>What</th><th>Severity</th><th>Opened</th><th>Resolved</th><th>Lasted</th><th>Notified</th></tr></thead>
-    <tbody>
-    {% for h in history %}
-      <tr class="{{ 'row-bad' if not h.resolved_at }}">
-        <td>{{ h.subject }}<div class="muted small">{{ h.kind }} · {{ h.detail | truncate(90) }}</div></td>
-        <td><span class="pill {{ 'failed' if h.severity == 'critical' else 'partial' }}">{{ h.severity }}</span></td>
-        <td class="muted small">{{ h.opened_at.strftime('%Y-%m-%d %H:%M') }}</td>
-        <td class="muted small">{% if h.resolved_at %}{{ h.resolved_at.strftime('%Y-%m-%d %H:%M') }}{% else %}<b>still open</b>{% endif %}</td>
-        <td class="muted small">{{ h.duration | string | truncate(14, true, '') }}</td>
-        <td class="muted small">{{ 'yes' if h.notified_at else '—' }}</td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <p class="muted">No episodes recorded yet. The notifier timer writes here every 10 minutes.</p>
-  {% endif %}
+<section style="margin-top:var(--sp-5)">
+  <div class="section-head">
+    <h2>Alert history</h2>
+    <span class="hint">the live lists above forget a problem the moment it clears; this remembers</span>
+  </div>
+  <div class="panel">
+    {% if history %}
+    <div class="table-wrap"><table>
+      <thead><tr>
+        <th scope="col">What</th><th scope="col">Severity</th>
+        <th scope="col">Opened</th><th scope="col">Cleared</th><th scope="col">Lasted</th>
+      </tr></thead>
+      <tbody>
+      {% for h in history %}
+        <tr class="{{ 'row-bad' if not h.resolved_at }}">
+          <td><b>{{ h.subject }}</b><div class="sub">{{ h.detail | truncate(84) }}</div></td>
+          <td><span class="badge badge-{{ 'bad' if h.severity == 'critical' else 'warn' }}">{{ h.severity }}</span></td>
+          <td class="muted small nowrap">{{ h.opened_at.strftime('%d %b %H:%M') }}</td>
+          <td class="muted small nowrap">{% if h.resolved_at %}{{ h.resolved_at.strftime('%d %b %H:%M') }}{% else %}<span class="badge badge-bad">still open</span>{% endif %}</td>
+          <td class="muted small nowrap">{{ h.duration | string | truncate(13, true, '') }}</td>
+        </tr>
+      {% endfor %}
+      </tbody></table></div>
+    {% else %}
+    <div class="empty">
+      {{ icon('clock') }}
+      <h3>No episodes recorded yet</h3>
+      <p>The notifier writes here every ten minutes. Once an alert opens and clears,
+         its full history stays available.</p>
+    </div>
+    {% endif %}
+  </div>
 </section>
 
 {% if actions %}
-<section>
-  <h2>Recent privileged actions</h2>
-  <p class="muted small">Every run and rotation the console asked the control service to perform,
-  recorded before it was attempted.</p>
-  <table>
-    <thead><tr><th>Action</th><th>Target</th><th>When</th><th>Result</th></tr></thead>
+<section style="margin-top:var(--sp-5)">
+  <div class="section-head">
+    <h2>Privileged actions</h2>
+    <span class="hint">recorded before each one is attempted</span>
+  </div>
+  <div class="panel"><div class="table-wrap"><table>
+    <thead><tr><th scope="col">Action</th><th scope="col">Target</th><th scope="col">When</th><th scope="col">Result</th></tr></thead>
     <tbody>
     {% for a in actions %}
-      <tr><td>{{ a.action }}</td><td class="mono small">{{ a.target }}</td>
-          <td class="muted small">{{ a.requested_at.strftime('%Y-%m-%d %H:%M') }}</td>
-          <td>{% if a.ok is none %}<span class="pill">pending</span>
-              {% elif a.ok %}<span class="pill success">ok</span>
-              {% else %}<span class="pill failed">failed</span>{% endif %}
-              <span class="muted small">{{ (a.detail or '') | truncate(60) }}</span></td></tr>
+      <tr><td>{{ a.action | replace('_',' ') }}</td><td class="mono">{{ a.target }}</td>
+          <td class="muted small nowrap">{{ a.requested_at.strftime('%d %b %H:%M') }}</td>
+          <td>{% if a.ok is none %}<span class="badge badge-neutral">pending</span>
+              {% elif a.ok %}<span class="badge badge-ok">ok</span>
+              {% else %}<span class="badge badge-bad">failed</span>{% endif %}</td></tr>
     {% endfor %}
-    </tbody>
-  </table>
+    </tbody></table></div></div>
 </section>
 {% endif %}
 
 {% if not control_ok %}
-<p class="muted small">Run controls are hidden: the control service is not configured
-(<code>CONTROL_TOKEN</code> unset in the console's .env).</p>
+<p class="small muted" style="margin-top:var(--sp-5)">
+  Run controls are hidden because the control service is not configured
+  (<code class="mono">CONTROL_TOKEN</code> unset). Everything above is still live.</p>
 {% endif %}
 {% endblock %}
+
+{% macro job_table(rows, control_units, control_ok, urgent) %}
+<div class="panel">
+  {% if rows %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th scope="col">Job</th><th scope="col">Cadence</th><th scope="col">State</th>
+        <th scope="col">Last reported</th><th scope="col">Allowed silence</th>
+        <th scope="col"><span class="sr-only">Actions</span></th>
+      </tr></thead>
+      <tbody>
+      {% for j in rows %}
+        {% set unit = j.job_key ~ '.service' %}
+        <tr class="{{ 'row-bad' if j.is_alerting }}">
+          <td class="mono">{{ j.job_key }}</td>
+          <td class="muted small">
+            {{ j.cadence or '—' }}
+            {% if j.window_source == 'legacy_default' %}<span class="tag tag-warn">undeclared</span>
+            {% elif j.window_source == 'override' %}<span class="tag">override</span>{% endif %}
+          </td>
+          <td>
+            {% if j.is_alerting %}<span class="badge badge-bad">{{ j.alert_reason | replace('_',' ') }}</span>
+            {% elif j.last_status %}<span class="badge badge-{{ 'ok' if j.last_status == 'success' else 'warn' }}">{{ j.last_status }}</span>
+            {% else %}<span class="badge badge-neutral no-dot">waiting for first run</span>{% endif %}
+          </td>
+          <td class="muted small nowrap">
+            {% if j.last_ping_at %}{{ j.last_ping_at.strftime('%d %b %H:%M') }}{% else %}never{% endif %}
+          </td>
+          <td class="muted small nowrap">{{ j.effective_silence_after or '—' }}</td>
+          <td>
+            <div class="cell-actions">
+            {% if unit in control_units %}
+              <a class="btn btn-sm" href="/jobs/{{ unit }}">Inspect</a>
+              {% if control_ok %}
+              <form method="post" action="/jobs/{{ unit }}/run" class="inline"
+                    data-confirm="This starts {{ unit }} now, outside its schedule. Harvests are idempotent, so running one again is safe."
+                    data-confirm-title="Run {{ j.job_key }} now?" data-confirm-ok="Run it">
+                <button class="btn btn-sm {{ 'btn-primary' if urgent }}" type="submit" data-busy="Starting…">Run</button>
+              </form>
+              {% endif %}
+            {% else %}
+              <span class="muted small" title="Not in the control service's allowlist">not runnable here</span>
+            {% endif %}
+            </div>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">{{ icon('empty') }}<h3>Nothing here</h3></div>
+  {% endif %}
+</div>
+{% endmacro %}

@@ -1,41 +1,74 @@
 {% extends "base.html" %}
 {% block title %}Decisions{% endblock %}
-{% block body %}
-<header class="page"><h1>Decisions log</h1></header>
+{% block crumbs %}
+  <a href="/decisions">Decisions</a>
+  {% if doc %}<span class="sep">/</span><span class="here">{{ doc.repo }}</span>{% endif %}
+{% endblock %}
 
-<nav class="tabs">
+{% block body %}
+<div class="page-head">
+  <div class="titles">
+    <h1>Decisions log</h1>
+    <p class="lede">Every architectural decision recorded across the repos, readable
+      here instead of opened as a file.</p>
+  </div>
+</div>
+
+{% if repos %}
+<div class="chips" style="margin-bottom:var(--sp-4)">
   {% for r in repos %}
-    <a href="/decisions/{{ r }}" class="{{ 'on' if doc and doc.repo == r }}">{{ r }}</a>
+    <a class="chip" href="/decisions/{{ r }}"
+       style="{{ '' if doc and doc.repo == r else 'background:var(--surface);color:var(--ink-2);border-color:var(--line)' }}">{{ r }}</a>
   {% endfor %}
-</nav>
+</div>
+{% endif %}
 
 {% if not repos %}
-  <p class="error">No DECISIONS.md found under the mounted repos directory.</p>
-  <p class="muted small">Check that <code>REPOS_HOST_DIR</code> in <code>.env</code> points at the
-  directory holding the repo checkouts on the VPS.</p>
+  <div class="panel"><div class="empty">
+    {{ icon('book') }}
+    <h3>No decision logs found</h3>
+    <p>Check that <code class="mono">REPOS_HOST_DIR</code> in the console's
+       <code class="mono">.env</code> points at the directory holding the repo checkouts.</p>
+  </div></div>
 {% elif doc %}
-  <p class="muted small">{{ doc.decision_count }} numbered decisions · {{ doc.path }}</p>
-  <form method="get" class="search">
-    <input name="q" value="{{ q }}" placeholder="Search this log…" autofocus>
-    <button type="submit">Search</button>
-  </form>
+  <div class="panel" style="margin-bottom:var(--sp-4)">
+    <div class="panel-body" style="display:flex;gap:var(--sp-4);align-items:center;flex-wrap:wrap">
+      <div><b>{{ doc.decision_count }}</b> <span class="muted">numbered decisions</span></div>
+      <form method="get" style="display:flex;gap:var(--sp-2);margin-left:auto" role="search">
+        <label class="sr-only" for="dq">Search this log</label>
+        <input id="dq" name="q" value="{{ q }}" type="search" placeholder="Search this log…">
+        <button class="btn" type="submit">Search</button>
+        {% if q %}<a class="btn btn-ghost" href="/decisions/{{ doc.repo }}">Clear</a>{% endif %}
+      </form>
+    </div>
+  </div>
 
   {% if hits is not none %}
-    <h2>{{ hits | length }} matching line{{ '' if hits|length == 1 else 's' }} for “{{ q }}”</h2>
+    <div class="section-head">
+      <h2>{{ hits | length }} match{{ '' if hits|length == 1 else 'es' }} for "{{ q }}"</h2>
+    </div>
+    <div class="panel">
     {% if hits %}
-    <table>
-      <thead><tr><th class="r">Line</th><th>Text</th></tr></thead>
-      <tbody>
-      {% for n, line in hits %}
-        <tr><td class="r muted">{{ n }}</td><td class="mono">{{ line }}</td></tr>
-      {% endfor %}
-      </tbody>
-    </table>
+      <div class="table-wrap"><table>
+        <thead><tr><th scope="col" class="r" style="width:70px">Line</th><th scope="col">Text</th></tr></thead>
+        <tbody>
+        {% for n, line in hits %}
+          <tr><td class="r num muted">{{ n }}</td><td class="mono">{{ line }}</td></tr>
+        {% endfor %}
+        </tbody></table></div>
+    {% else %}
+      <div class="empty">{{ icon('search') }}<h3>Nothing matches "{{ q }}"</h3>
+        <p>Try a shorter phrase, or a decision number like D-70.</p>
+        <a class="btn" href="/decisions/{{ doc.repo }}">Show the whole log</a></div>
     {% endif %}
+    </div>
   {% else %}
     <pre class="doc">{{ doc.text }}</pre>
   {% endif %}
 {% else %}
-  <p class="muted">Pick a repo above.</p>
+  <div class="panel"><div class="empty">
+    {{ icon('book') }}<h3>Pick a repository</h3>
+    <p>Choose one above to read its decision log.</p>
+  </div></div>
 {% endif %}
 {% endblock %}

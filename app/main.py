@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from app import alerting, browse, control, decisions, keys, metrics, queries
+from app import alerting, browse, control, decisions, icons, keys, metrics, queries
 from app.auth import SESSION_KEY, check_login, require_admin
 from app.db import close_pool, execute, open_pool
 from app.settings import get_settings
@@ -49,12 +49,31 @@ app.add_middleware(
 
 templates = Jinja2Templates(directory="app/templates")
 templates.env.filters["bytes"] = metrics.human_bytes
+templates.env.globals["icon"] = icons.icon
+
+
+def _nav_counts() -> dict:
+    """The two numbers the sidebar carries. Kept cheap and failure-tolerant:
+    a badly-timed database hiccup should not take out every page's chrome, so
+    a failure here shows no badge rather than a 500."""
+    try:
+        c = queries.alert_counts()
+        pending = sum(1 for k in keys.registry() if k["status"] == "pending")
+        return {
+            "nav_alerts": (c.get("heartbeat_alerts") or 0) + (c.get("empty_successful_runs") or 0),
+            "nav_keys_pending": pending,
+        }
+    except Exception:  # noqa: BLE001
+        logger.exception("nav counts unavailable")
+        return {"nav_alerts": 0, "nav_keys_pending": 0}
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 ADMIN = Depends(require_admin)
 
 
 def page(request: Request, name: str, **ctx) -> HTMLResponse:
+    if request.session.get(SESSION_KEY):
+        ctx = {**_nav_counts(), **ctx}
     return templates.TemplateResponse(request, name, ctx)
 
 
@@ -123,8 +142,12 @@ def overview(request: Request):
         totals=queries.totals(),
         counts=counts,
         light=light,
+        attention=queries.attention(),
+        job_count=queries.job_count(),
+        keys_pending=sum(1 for k in keys.registry() if k["status"] == "pending"),
+        control_ok=bool(get_settings().control_token),
         engines=queries.engines(),
-        runs=queries.recent_runs(15),
+        runs=queries.recent_runs(12),
         growth=queries.growth_last_30_days(),
     )
 
@@ -192,7 +215,9 @@ def entity_page(request: Request, uid: str):
     row = browse.entity_detail(uid)
     if row is None:
         raise HTTPException(404, f"no entity with uid {uid!r}")
-    return page(request, "entity.html", e=row)
+    # `from` carries the filter the visitor arrived with, so "back to results"
+    # returns them to their own search rather than an unfiltered list.
+    return page(request, "entity.html", e=row, back=request.query_params.get("from", ""))
 
 
 @app.get("/map", response_class=HTMLResponse, dependencies=[ADMIN])
@@ -226,6 +251,7 @@ def run_job(unit: str):
 
 @app.get("/jobs/{unit}", response_class=HTMLResponse, dependencies=[ADMIN])
 def job_page(request: Request, unit: str, lines: int = 120):
+    lines = min(500, max(30, lines))
     try:
         status_info = control.unit_status(unit)
         logs = control.unit_logs(unit, lines)
@@ -233,7 +259,7 @@ def job_page(request: Request, unit: str, lines: int = 120):
         raise HTTPException(503, str(exc)) from exc
     if status_info.get("error"):
         raise HTTPException(403, status_info["error"])
-    return page(request, "job.html", unit=unit, status=status_info, logs=logs)
+    return page(request, "job.html", unit=unit, status=status_info, logs=logs, lines=lines)
 
 
 # ---------------------------------------------------------------------------

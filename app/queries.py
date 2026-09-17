@@ -298,3 +298,92 @@ def open_items() -> list[dict]:
           sort_order, id
         """
     )
+
+
+# ---------------------------------------------------------------------------
+# The overview's "needs attention" list
+# ---------------------------------------------------------------------------
+
+_REASON_LABEL = {
+    "last_run_failed":      "last run failed",
+    "consecutive_failures": "failing repeatedly",
+    "never_ran":            "never ran",
+    "silent_past_window":   "overdue",
+}
+
+
+def attention(limit: int = 8) -> list[dict]:
+    """One ranked list of everything a person should act on, worst first.
+
+    Deliberately merges heartbeat alerts and silently-empty runs into a single
+    list rather than showing two competing tables. Someone arriving at this
+    console wants one answer to "what do I do now", not a choice of which
+    problem taxonomy to read first.
+
+    Each row carries the systemd unit where one exists, so the fix — inspect
+    the log, run it again — is a button on this row instead of a trip to a
+    terminal.
+    """
+    rows: list[dict] = []
+
+    for r in fetch_all(
+        """
+        SELECT job_key, reason, last_status::text AS last_status, last_ping_at,
+               consecutive_failures, cadence::text AS cadence
+        FROM v_heartbeat_alert
+        """
+    ):
+        critical = r["reason"] in ("last_run_failed", "consecutive_failures")
+        rows.append({
+            "subject": r["job_key"],
+            "unit": f"{r['job_key']}.service",
+            "link": None,
+            "kind_label": f"{r['cadence'] or 'undeclared'} job",
+            "reason_label": _REASON_LABEL.get(r["reason"], r["reason"]),
+            "severity": "critical" if critical else "warn",
+            "sort": 0 if critical else 2,
+            "when": r["last_ping_at"].strftime("%d %b %H:%M") if r["last_ping_at"] else "never",
+        })
+
+    for r in fetch_all(
+        """
+        SELECT s.key AS source_key, e.key AS engine_key, e.name AS engine_name,
+               max(r.finished_at) AS latest, count(*) AS n
+        FROM harvest_run r
+        JOIN source s ON s.id = r.source_id
+        JOIN engine e ON e.id = s.engine_id
+        WHERE r.status = 'success' AND r.records_accepted = 0
+          AND r.finished_at > now() - interval '30 days'
+        GROUP BY s.key, e.key, e.name
+        """
+    ):
+        rows.append({
+            "subject": r["source_key"],
+            "unit": None,
+            "link": f"/engines/{r['engine_key']}",
+            "kind_label": f"{r['engine_name']} source",
+            "reason_label": f"{r['n']} run(s) collected nothing",
+            "severity": "critical",
+            "sort": 1,
+            "when": r["latest"].strftime("%d %b %H:%M") if r["latest"] else "—",
+        })
+
+    for r in fetch_all("SELECT key, engine, age, last_success FROM v_stale_source"):
+        rows.append({
+            "subject": r["key"],
+            "unit": None,
+            "link": f"/engines/{r['engine']}",
+            "kind_label": "data source",
+            "reason_label": "past its staleness limit",
+            "severity": "warn",
+            "sort": 3,
+            "when": r["last_success"].strftime("%d %b %H:%M") if r["last_success"] else "never",
+        })
+
+    rows.sort(key=lambda x: (x["sort"], x["subject"]))
+    return rows[:limit]
+
+
+def job_count() -> int:
+    row = fetch_one("SELECT count(*) AS n FROM heartbeat")
+    return (row or {}).get("n", 0)

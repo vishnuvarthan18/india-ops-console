@@ -1,35 +1,81 @@
 {% extends "base.html" %}
 {% block title %}{{ unit }}{% endblock %}
-{% block body %}
-<header class="page">
-  <h1>{{ unit }}</h1>
-  <a class="muted" href="/alerts">← all jobs</a>
-</header>
+{% block crumbs %}
+  <a href="/alerts">Alerts &amp; jobs</a><span class="sep">/</span>
+  <span class="here mono">{{ unit }}</span>
+{% endblock %}
 
-<section class="tiles">
-  <div class="tile"><span class="n">{% if status.failed %}failed{% elif status.active %}running{% else %}idle{% endif %}</span>
-    <span class="l">State</span></div>
-  <div class="tile">
-    <form method="post" action="/jobs/{{ unit }}/run" class="inline">
-      <button type="submit">Run now</button>
-    </form>
-    <span class="l">Harvests are idempotent — running again is safe</span>
+{% block body %}
+<div class="page-head">
+  <div class="titles">
+    <h1 class="mono" style="font-size:19px">{{ unit }}</h1>
+    <p class="lede">
+      {% if status.failed %}This unit is in a failed state.
+      {% elif status.active %}Running now.
+      {% else %}Idle — waiting for its next scheduled run.{% endif %}
+    </p>
   </div>
-</section>
+  <div class="acts">
+    <form method="post" action="/jobs/{{ unit }}/run"
+          data-confirm="This starts {{ unit }} immediately, outside its schedule. Harvests are idempotent, so running one again is safe."
+          data-confirm-title="Run this job now?" data-confirm-ok="Run it">
+      <button class="btn btn-primary" type="submit" data-busy="Starting…">{{ icon('play') }} Run now</button>
+    </form>
+    <a class="btn" href="/jobs/{{ unit }}?lines={{ lines }}">{{ icon('clock') }} Refresh</a>
+  </div>
+</div>
+
+<div class="tiles" style="margin-bottom:var(--sp-5)">
+  <div class="tile {{ 'is-bad' if status.failed }}">
+    <span class="label">State</span>
+    <span class="value" style="font-size:19px">
+      {% if status.failed %}Failed{% elif status.active %}Running{% else %}Idle{% endif %}</span>
+    <span class="foot">reported by systemd</span>
+  </div>
+  <div class="tile is-quiet">
+    <span class="label">Log lines shown</span>
+    <span class="value" style="font-size:19px">{{ lines }}</span>
+    <span class="foot">
+      {% for n in [60, 120, 300, 500] %}<a href="/jobs/{{ unit }}?lines={{ n }}">{{ n }}</a>{{ ' · ' if not loop.last }}{% endfor %}
+    </span>
+  </div>
+</div>
 
 <section>
-  <h2>Status</h2>
+  <div class="section-head"><h2>Unit status</h2></div>
   <pre class="doc">{{ status.text }}</pre>
 </section>
 
-<section>
-  <h2>Recent log</h2>
-  <form method="get" class="search">
-    <label class="muted small">Lines
-      <select name="lines" onchange="this.form.submit()">
-        {% for n in [60, 120, 300, 500] %}<option value="{{ n }}">{{ n }}</option>{% endfor %}
-      </select></label>
-  </form>
-  <pre class="doc">{{ logs }}</pre>
+<section style="margin-top:var(--sp-5)">
+  <div class="section-head">
+    <h2>Recent log</h2>
+    <span class="hint">newest at the bottom</span>
+  </div>
+  {% if logs.strip() %}
+    <pre class="term" id="log">{{ logs }}</pre>
+  {% else %}
+    <div class="panel"><div class="empty">
+      {{ icon('empty') }}
+      <h3>No log output</h3>
+      <p>This unit has not written to the journal yet. It may never have run.</p>
+    </div></div>
+  {% endif %}
 </section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  /* Scroll to the newest line, and keep the page fresh while a run is in
+     flight — but only while it is running, so an idle page is not reloading
+     itself in a forgotten browser tab all week. */
+  var log = document.getElementById("log");
+  if (log) log.scrollTop = log.scrollHeight;
+  {% if status.active %}
+  var left = 10;
+  var t = setInterval(function () {
+    if (--left <= 0) { clearInterval(t); location.reload(); }
+  }, 1000);
+  window.toast && toast("Running — refreshing in a few seconds");
+  {% endif %}
+</script>
 {% endblock %}

@@ -1,49 +1,86 @@
 {% extends "base.html" %}
-{% from "_filters.html" import filter_form %}
+{% from "_filters.html" import filter_form, active_chips %}
 {% block title %}Data{% endblock %}
+{% block crumbs %}<span class="here">Data</span>{% endblock %}
+{% block topbar_actions %}
+  <a class="btn btn-sm" href="/map{{ '?' ~ querystring if querystring }}">{{ icon('map') }} Map view</a>
+{% endblock %}
+
 {% block body %}
-<header class="page">
-  <h1>Data browser</h1>
-  <a class="muted" href="/map?{{ querystring }}">View on map →</a>
-</header>
+<div class="page-head">
+  <div class="titles">
+    <h1>Data browser</h1>
+    <p class="lede">Every record the platform holds, with the sources behind it.</p>
+  </div>
+  <div class="acts">
+    <a class="btn" href="/data/export.csv{{ '?' ~ querystring if querystring }}"
+       {{ 'aria-disabled=true' if not result.total }}>{{ icon('down') }} Export CSV</a>
+  </div>
+</div>
 
 {{ filter_form(facets, params, "/data") }}
+{{ active_chips(params, "/data", facets) }}
 
-<p class="muted small">
-  {{ "{:,}".format(result.total) }} matching {{ 'entity' if result.total == 1 else 'entities' }}
-  · page {{ result.page }} of {{ result.pages }}
-  · <a href="/data/export.csv?{{ querystring }}">download CSV</a>
-</p>
+<div class="section-head">
+  <h2>{{ "{:,}".format(result.total) }} {{ 'record' if result.total == 1 else 'records' }}</h2>
+  {% if result.pages > 1 %}<span class="hint">page {{ result.page }} of {{ result.pages }}</span>{% endif %}
+</div>
 
-<table>
-  <thead><tr><th>Name</th><th>Type</th><th>Engine</th><th>Where</th><th class="r">Facts</th><th>Geometry</th><th>Precision</th></tr></thead>
-  <tbody>
-  {% for r in result.rows %}
-    <tr>
-      <td><a href="/entity/{{ r.uid }}">{{ r.name }}</a>
-        {% if r.name_local %}<div class="muted small">{{ r.name_local }}</div>{% endif %}</td>
-      <td class="muted small">{{ r.entity_type }}</td>
-      <td class="muted small">{{ r.engine_name }}</td>
-      <td class="muted small">{{ r.district + ', ' if r.district }}{{ r.state or '—' }}</td>
-      <td class="r">{{ r.fact_count }}</td>
-      <td>{% if r.has_geom %}<span class="pill success">yes</span>{% else %}<span class="pill">no</span>{% endif %}</td>
-      <td class="muted small">{% if r.publish_precision != 'full' %}<span class="tag warn">{{ r.publish_precision }}</span>{% else %}full{% endif %}</td>
-    </tr>
-  {% else %}
-    <tr><td colspan="7" class="muted">Nothing matches this filter.</td></tr>
-  {% endfor %}
-  </tbody>
-</table>
+<div class="panel">
+{% if result.rows %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th scope="col">Name</th><th scope="col">Type</th><th scope="col">Engine</th>
+        <th scope="col">Where</th><th scope="col" class="r">Facts</th>
+        <th scope="col">Coordinates</th><th scope="col">Precision</th>
+      </tr></thead>
+      <tbody>
+      {% for r in result.rows %}
+        <tr>
+          <td><a href="/entity/{{ r.uid }}{{ '?from=' ~ querystring|urlencode if querystring }}">{{ r.name }}</a>
+            {% if r.name_local %}<div class="sub">{{ r.name_local }}</div>{% endif %}</td>
+          <td class="muted small">{{ r.entity_type }}</td>
+          <td class="muted small">{{ r.engine_name | replace(' Engine','') }}</td>
+          <td class="muted small">{{ (r.district ~ ', ') if r.district }}{{ r.state or '—' }}</td>
+          <td class="r num">{{ r.fact_count }}</td>
+          <td>{% if r.has_geom %}<span class="badge badge-ok no-dot">yes</span>
+              {% else %}<span class="badge badge-neutral no-dot">none</span>{% endif %}</td>
+          <td>{% if r.publish_precision != 'full' %}
+                <span class="badge badge-warn">{{ r.publish_precision | replace('_',' ') }}</span>
+              {% else %}<span class="muted small">full</span>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <div class="empty">
+    {{ icon('search') }}
+    <h3>Nothing matches these filters</h3>
+    <p>Try removing a filter, or clearing them all to start again.</p>
+    <a class="btn" href="/data">Clear all filters</a>
+  </div>
+{% endif %}
+</div>
 
 {% if result.pages > 1 %}
-<div class="pager">
-  {% set base = querystring | replace('page=' + result.page|string, '') %}
-  {% if result.page > 1 %}<a href="/data?{{ base }}&page={{ result.page - 1 }}">← previous</a>{% endif %}
-  <span class="muted">page {{ result.page }} of {{ result.pages }}</span>
-  {% if result.page < result.pages %}<a href="/data?{{ base }}&page={{ result.page + 1 }}">next →</a>{% endif %}
-</div>
+<nav class="pager" aria-label="Pagination">
+  {% set base = [] %}
+  {% for k, v in params.items() %}{% if v %}{% set _ = base.append(k ~ '=' ~ v) %}{% endif %}{% endfor %}
+  {% set qbase = base | join('&') %}
+  {% if result.page > 1 %}
+    <a class="btn btn-sm" href="/data?{{ qbase }}{{ '&' if qbase }}page={{ result.page - 1 }}">← Previous</a>
+  {% else %}<span class="btn btn-sm" aria-disabled="true">← Previous</span>{% endif %}
+  <span class="of">Page {{ result.page }} of {{ result.pages }}</span>
+  {% if result.page < result.pages %}
+    <a class="btn btn-sm" href="/data?{{ qbase }}{{ '&' if qbase }}page={{ result.page + 1 }}">Next →</a>
+  {% else %}<span class="btn btn-sm" aria-disabled="true">Next →</span>{% endif %}
+</nav>
 {% endif %}
 
-<p class="muted small">CSV exports exclude withheld entities and drop coordinates from anything
-below full precision — an export is a file that leaves the platform the moment someone forwards it.</p>
+<p class="small muted" style="margin-top:var(--sp-5);max-width:70ch">
+  Exports exclude withheld records and drop coordinates from anything below full
+  precision — an export is a file that leaves the platform the moment someone forwards it.
+</p>
 {% endblock %}

@@ -1,73 +1,110 @@
 {% extends "base.html" %}
 {% block title %}{{ e.name }}{% endblock %}
+{% block crumbs %}
+  <a href="/data{{ '?' ~ back if back }}">Data</a><span class="sep">/</span>
+  <a href="/engines/{{ e.engine_key }}">{{ e.engine_name | replace(' Engine','') }}</a><span class="sep">/</span>
+  <span class="here">{{ e.name }}</span>
+{% endblock %}
+{% block topbar_actions %}
+  <a class="btn btn-sm btn-ghost" href="/data{{ '?' ~ back if back }}">{{ icon('back') }} Back to results</a>
+{% endblock %}
+
 {% block body %}
-<header class="page">
-  <h1>{{ e.name }}</h1>
-  {% if e.publish_precision != 'full' %}<span class="tag warn">{{ e.publish_precision }}</span>{% endif %}
-</header>
-<p class="muted small mono">{{ e.uid }}</p>
+<div class="page-head">
+  <div class="titles">
+    <h1>{{ e.name }}</h1>
+    <p class="lede">
+      {{ e.entity_type | replace('_',' ') }}
+      {%- if e.state %} in {{ (e.district ~ ', ') if e.district }}{{ e.state }}{% endif -%}
+      {%- if e.name_local %} · known locally as {{ e.name_local }}
+        <span class="muted">({{ e.name_language }})</span>{% endif %}
+    </p>
+  </div>
+  {% if e.publish_precision != 'full' %}
+    <div class="acts"><span class="badge badge-warn">{{ e.publish_precision | replace('_',' ') }} only</span></div>
+  {% endif %}
+</div>
 
-<section class="tiles">
-  <div class="tile"><span class="n">{{ e.entity_type }}</span><span class="l">Type</span></div>
-  <div class="tile"><span class="n">{{ e.engine_name }}</span><span class="l">Engine</span></div>
-  <div class="tile"><span class="n">{{ e.state or '—' }}</span><span class="l">State</span>
-    {% if e.district %}<span class="muted small">{{ e.district }}</span>{% endif %}</div>
-  <div class="tile"><span class="n">{{ e.facts | length }}</span><span class="l">Facts on record</span></div>
-</section>
+<p class="mono subtle" style="margin-top:calc(-1 * var(--sp-3))">{{ e.uid }}</p>
 
-{% if e.name_local %}<p><b>Local name:</b> {{ e.name_local }} <span class="muted small">({{ e.name_language }})</span></p>{% endif %}
-{% if e.is_permanent_gap %}<p class="error">Marked a permanent gap: {{ e.gap_reason }}</p>{% endif %}
-{% if e.notes %}<p class="muted">{{ e.notes }}</p>{% endif %}
+{% if e.publish_precision != 'full' %}
+<div class="panel" style="border-color:var(--warn-line);background:var(--warn-soft);margin-bottom:var(--sp-5)">
+  <div class="panel-body" style="display:flex;gap:var(--sp-3);align-items:flex-start">
+    <span class="warn-text">{{ icon('shield') }}</span>
+    <div>
+      <b class="warn-text">Location withheld</b>
+      <p class="small muted" style="margin:2px 0 0;max-width:62ch">
+        This record type is capped at <b>{{ e.publish_precision | replace('_',' ') }}</b>
+        precision by the database itself — not by a setting here. Exact coordinates are
+        never stored, and exports carry none.
+      </p>
+    </div>
+  </div>
+</div>
+{% elif e.lat %}
+<div class="tiles" style="margin-bottom:var(--sp-5)">
+  <div class="tile is-quiet"><span class="label">Coordinates</span>
+    <span class="value mono" style="font-size:15px">{{ "%.5f"|format(e.lat) }}, {{ "%.5f"|format(e.lon) }}</span>
+    <span class="foot">{{ (e.geom_type or '') | replace('ST_','') }}</span></div>
+  <div class="tile is-quiet"><span class="label">Facts on record</span>
+    <span class="value">{{ e.facts | length }}</span>
+    <span class="foot">from {{ e.facts | map(attribute='source_key') | unique | list | length }} source(s)</span></div>
+  <div class="tile is-quiet"><span class="label">Last updated</span>
+    <span class="value" style="font-size:17px">{{ e.updated_at.strftime('%d %b %Y') }}</span></div>
+</div>
+{% endif %}
 
-{% if e.lat and e.publish_precision == 'full' %}
-<section>
-  <h2>Location</h2>
-  <p class="muted small mono">{{ "%.5f"|format(e.lat) }}, {{ "%.5f"|format(e.lon) }}
-     {% if e.geom_type %}· {{ e.geom_type | replace('ST_', '') }}{% endif %}</p>
-</section>
-{% elif e.publish_precision != 'full' %}
-<p class="muted small">Coordinates withheld: this entity type is capped at
-   <b>{{ e.publish_precision }}</b> precision by the database's own rule.</p>
+{% if e.is_permanent_gap %}
+<div class="alert-inline" style="max-width:70ch">Recorded as a permanent gap: {{ e.gap_reason }}</div>
 {% endif %}
 
 <section>
-  <h2>Facts</h2>
-  <p class="muted small">Every source's assertion is kept. Nothing overwrites anything — the
-  “best” mark is read-time resolution by confidence, then recency.</p>
-  <table>
-    <thead><tr><th>Field</th><th>Value</th><th>Source</th><th>Confidence</th><th>Licence</th><th>Retrieved</th><th>Valid</th></tr></thead>
-    <tbody>
-    {% for f in e.facts %}
-      <tr class="{{ 'done-row' if f.superseded_at }}">
-        <td>{{ f.field_name }} {% if f.is_best %}<span class="tag">best</span>{% endif %}</td>
-        <td><b>{% if f.value_num is not none %}{{ "{:,.4g}".format(f.value_num) }}{% elif f.value_text %}{{ f.value_text }}{% elif f.value_date %}{{ f.value_date }}{% else %}{{ f.value_json }}{% endif %}</b>
-            {{ f.unit or '' }}</td>
-        <td class="muted small">{{ f.source_key }}</td>
-        <td><span class="pill {{ 'success' if f.confidence == 'high' else ('partial' if f.confidence == 'medium' else '') }}">{{ f.confidence }}</span></td>
-        <td class="muted small">{{ f.license }}</td>
-        <td class="muted small">{{ f.retrieved_at.strftime('%Y-%m-%d') }}</td>
-        <td class="muted small">{{ f.valid_from or '—' }}{{ ' → ' + f.valid_to|string if f.valid_to }}</td>
-      </tr>
-    {% else %}
-      <tr><td colspan="7" class="muted">No facts recorded.</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
+  <div class="section-head">
+    <h2>Facts</h2>
+    <span class="hint">every source's claim is kept — nothing overwrites anything</span>
+  </div>
+  <div class="panel">
+  {% if e.facts %}
+    <div class="table-wrap"><table>
+      <thead><tr>
+        <th scope="col">Field</th><th scope="col">Value</th><th scope="col">Source</th>
+        <th scope="col">Confidence</th><th scope="col">Licence</th><th scope="col">Fetched</th>
+      </tr></thead>
+      <tbody>
+      {% for f in e.facts %}
+        <tr class="{{ 'is-done' if f.superseded_at }}">
+          <td>{{ f.field_name | replace('_',' ') }}
+            {% if f.is_best %}<span class="tag" title="Shown when one value must be chosen">preferred</span>{% endif %}
+            {% if f.valid_from %}<div class="sub">{{ f.valid_from }}{{ ' → ' ~ f.valid_to if f.valid_to }}</div>{% endif %}</td>
+          <td><b class="num">{% if f.value_num is not none %}{{ "{:,.4g}".format(f.value_num) }}{% elif f.value_text %}{{ f.value_text }}{% elif f.value_date %}{{ f.value_date }}{% else %}{{ f.value_json }}{% endif %}</b>
+              <span class="muted small">{{ f.unit or '' }}</span></td>
+          <td class="mono small">{{ f.source_key }}</td>
+          <td><span class="badge badge-{{ 'ok' if f.confidence == 'high' else ('warn' if f.confidence == 'medium' else 'neutral') }}">{{ f.confidence }}</span></td>
+          <td class="muted small">{{ f.license }}</td>
+          <td class="muted small nowrap">{{ f.retrieved_at.strftime('%d %b %Y') }}</td>
+        </tr>
+      {% endfor %}
+      </tbody></table></div>
+  {% else %}
+    <div class="empty">{{ icon('empty') }}<h3>No facts recorded</h3>
+      <p>This record exists but nothing has been asserted about it yet.</p></div>
+  {% endif %}
+  </div>
 </section>
 
 {% if e.relations %}
-<section>
-  <h2>Related</h2>
-  <table>
-    <thead><tr><th>Relation</th><th></th><th>Entity</th><th>Type</th></tr></thead>
+<section style="margin-top:var(--sp-5)">
+  <div class="section-head"><h2>Connected records</h2></div>
+  <div class="panel"><div class="table-wrap"><table>
+    <thead><tr><th scope="col">Relationship</th><th scope="col">Record</th><th scope="col">Type</th></tr></thead>
     <tbody>
     {% for r in e.relations %}
-      <tr><td>{{ r.relation_type }}</td><td class="muted small">{{ r.direction }}</td>
+      <tr><td>{{ r.relation_type | replace('_',' ') }}
+            <span class="muted small">({{ 'outgoing' if r.direction == 'out' else 'incoming' }})</span></td>
           <td><a href="/entity/{{ r.uid }}">{{ r.name }}</a></td>
           <td class="muted small">{{ r.entity_type }}</td></tr>
     {% endfor %}
-    </tbody>
-  </table>
+    </tbody></table></div></div>
 </section>
 {% endif %}
 {% endblock %}
