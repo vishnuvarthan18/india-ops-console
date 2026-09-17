@@ -15,7 +15,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: india-ops-console:latest
+    image: india-ops-console:latest   # built locally from the pinned base above
     container_name: ops-console
     restart: unless-stopped
     env_file: .env

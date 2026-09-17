@@ -232,6 +232,37 @@ Review `control/units.allow` before installing it. That file is the security
 boundary: a unit not listed cannot be touched by the console whatever the
 request says.
 
+## Tests
+
+    ./scripts/run-tests.sh
+
+**184 tests, ~9 seconds.** The script starts a disposable PostGIS container,
+applies the real schema, seeds a fixture, runs pytest and tears the container
+down. `tests/README.md` says what each file covers and, just as importantly,
+what it does not.
+
+85 of those tests — including the whole control-service suite, which is the
+highest-consequence code here — need no database and run anywhere:
+
+    pytest          # database-backed tests skip with a clear message
+
+### What writing the suite found
+
+Four bugs, three of them in the tests rather than the app, which is itself
+worth knowing:
+
+- **Real:** the session epoch was stamped from a module-level settings snapshot
+  taken at import, while the check that validates it read settings fresh. In
+  production the process restarts so the two agreed; under test they did not.
+  Both now read the same source.
+- The leak test for withheld coordinates matched an inline SVG icon's path data
+  (`m10.2 10.2 3.3 3.3`) and cried wolf. It now reads the page's visible text.
+- Migration tests ran as the console's own restricted role, which correctly
+  cannot ALTER TABLE — they run as the superuser now. The restriction working
+  is the point, tested separately.
+- A test asserting that proxy headers are ignored matched the docstring that
+  explains why they are ignored. It now parses the function body.
+
 ## Phase-2 verification (2026-09-16, before deploy)
 
 Against a throwaway Postgres 16 **with PostGIS**, real `0001`/`0002` schema,
@@ -256,6 +287,39 @@ Against a throwaway Postgres 16 **with PostGIS**, real `0001`/`0002` schema,
   signed-out request.
 
 Still not verified against the live database.
+
+## Production readiness
+
+Honest status: **not yet deployed, and nothing here has run against the
+production database.** Every test uses a fresh schema and synthetic rows.
+
+Closed since the first review:
+
+- A committed test suite, so the verification is repeatable by anyone.
+- Login throttling: five failed attempts locks that client out for five
+  minutes, and a locked-out client cannot get in even with the right password.
+  A correct sign-in clears the count.
+- A second hardening pass on the control service: request and path size limits,
+  control characters refused before the allowlist comparison (so a refused name
+  cannot forge log lines), and line breaks refused in a rotation value — which
+  would otherwise have let one rotation define a second variable in the secrets
+  file, including one the service refuses to rotate directly.
+- Session revocation via `SESSION_EPOCH`, without changing the signing secret.
+- A real error page instead of a bare JSON body, which never echoes the
+  underlying message — an error can carry a connection string.
+
+Still open:
+
+- **Deploy and verify against the live database.** Nothing replaces this.
+- **The base image is not pinned.** Run `./scripts/pin-base-image.sh` on a
+  machine with Docker before the first production deploy; the session that
+  wrote this had no route to a registry and would not commit a digest it could
+  not verify.
+- **No second pair of eyes on `control/control_service.py`.** It is ~300 lines,
+  runs as root, and has been reviewed only by its author. If one file gets an
+  external review, it is that one.
+- **No browser-level tests.** Layout, contrast and keyboard behaviour were
+  checked manually with Playwright; that check is not automated.
 
 ## Known gaps
 

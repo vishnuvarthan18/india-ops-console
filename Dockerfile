@@ -1,5 +1,13 @@
 # Ops console image. Same shape as the core API's: slim base, wheels only,
 # non-root runtime user, no build toolchain in the final layer.
+# NOT YET PINNED — pin this before the first production deploy.
+#
+# A tag is a moving pointer: `3.12-slim-bookworm` today and in six months are
+# different images, so an unpinned rebuild can change the runtime underneath a
+# service nobody touched. Run ./scripts/pin-base-image.sh on a machine with
+# Docker; it resolves the tag to a digest and rewrites this line. The session
+# that wrote this had no route to a container registry, so it left the tag
+# rather than commit a digest it could not verify.
 FROM python:3.12-slim-bookworm
 
 ENV PYTHONUNBUFFERED=1 \

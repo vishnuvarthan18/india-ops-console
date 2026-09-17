@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     admin_password_hash: str
     session_secret: str
     session_max_age_hours: int = 12
+    # Bumping this signs every session out everywhere, without changing
+    # SESSION_SECRET (which would also invalidate anything else signed with it).
+    # It is the "I left it open on a machine I no longer have" button.
+    session_epoch: int = 1
 
     metrics_file: str = "/var/ops-metrics/metrics.json"
     repos_dir: str = "/repos"

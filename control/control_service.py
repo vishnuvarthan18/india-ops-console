@@ -42,6 +42,9 @@ from urllib.parse import parse_qs, urlparse
 LOG = logging.getLogger("ops-control")
 
 LISTEN_HOST = "127.0.0.1"
+MAX_BODY_BYTES = 64 * 1024
+MAX_PATH_CHARS = 512
+REQUEST_TIMEOUT = 15
 LISTEN_PORT = int(os.environ.get("CONTROL_PORT", "8011"))
 TOKEN = os.environ.get("CONTROL_TOKEN", "")
 ALLOWLIST_FILE = os.environ.get("CONTROL_ALLOWLIST", "/etc/ops-control/units.allow")
@@ -52,6 +55,27 @@ SECRETS_FILE = os.environ.get("CONTROL_SECRETS_FILE", "/home/ubuntu/core-infra/.
 # allowlist. Belt and braces: the allowlist is the real control.
 UNIT_RE = re.compile(r"^[A-Za-z0-9@_.\-]{1,96}\.service$")
 ENVVAR_RE = re.compile(r"^[A-Z][A-Z0-9_]{2,63}$")
+
+
+def safe_for_log(value: str, limit: int = 80) -> str:
+    """Anything echoed into the journal is stripped of control characters first.
+
+    A request string containing newlines could otherwise write extra lines into
+    the log and fake, say, a successful rotation that never happened."""
+    return "".join(c for c in value[:limit] if c.isprintable())
+
+
+def allowed_unit(name: str) -> bool:
+    """The one place a unit name is judged.
+
+    Three gates, cheapest first: no control characters, matches the shape of a
+    unit name, and is literally present in the allowlist file. The third is the
+    real control — the first two only make refusals cheap and legible."""
+    if not name or any(not c.isprintable() for c in name):
+        return False
+    if not UNIT_RE.match(name):
+        return False
+    return name in _read_allowlist(ALLOWLIST_FILE)
 
 
 def _read_allowlist(path: str) -> set[str]:
@@ -122,6 +146,20 @@ def rotate_secret(env_var: str, new_value: str) -> tuple[bool, str]:
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "ops-control"
+    protocol_version = "HTTP/1.1"
+    # A slow client must not be able to hold a worker open indefinitely.
+    timeout = REQUEST_TIMEOUT
+
+    def handle_one_request(self):
+        """Refuse an over-long request line before anything parses it.
+
+        BaseHTTPRequestHandler already caps the request line, but doing it here
+        means an attempt shows up in the log as a refusal rather than a silent
+        socket error."""
+        try:
+            super().handle_one_request()
+        except (TimeoutError, ConnectionResetError, BrokenPipeError):
+            self.close_connection = True
 
     def log_message(self, fmt, *args):  # quieter, and to the journal
         LOG.info("%s - %s", self.address_string(), fmt % args)
@@ -144,6 +182,9 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---- read endpoints ---------------------------------------------------
     def do_GET(self):  # noqa: N802
+        if len(self.path) > MAX_PATH_CHARS:
+            LOG.warning("refused an over-long request path (%d chars)", len(self.path))
+            return self._send(414, {"error": "path too long"})
         if not self._authed():
             return
         url = urlparse(self.path)
@@ -155,8 +196,9 @@ class Handler(BaseHTTPRequestHandler):
 
         if len(parts) == 2 and parts[0] in ("status", "logs"):
             unit = parts[1]
-            if not UNIT_RE.match(unit) or unit not in _read_allowlist(ALLOWLIST_FILE):
-                LOG.warning("refused %s for non-allowlisted unit %r", parts[0], unit[:80])
+            if not allowed_unit(unit):
+                LOG.warning("refused %s for non-allowlisted unit %r",
+                            parts[0], safe_for_log(unit))
                 return self._send(403, {"error": "unit not allowlisted"})
 
             if parts[0] == "status":
@@ -177,12 +219,21 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---- action endpoints -------------------------------------------------
     def do_POST(self):  # noqa: N802
+        if len(self.path) > MAX_PATH_CHARS:
+            LOG.warning("refused an over-long request path (%d chars)", len(self.path))
+            return self._send(414, {"error": "path too long"})
         if not self._authed():
             return
         parts = [p for p in urlparse(self.path).path.split("/") if p]
 
-        length = int(self.headers.get("Content-Length") or 0)
-        raw = self.rfile.read(min(length, 65536)) if length else b"{}"
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            return self._send(400, {"error": "bad Content-Length"})
+        if length > MAX_BODY_BYTES:
+            LOG.warning("refused a %d-byte body", length)
+            return self._send(413, {"error": "body too large"})
+        raw = self.rfile.read(length) if length > 0 else b"{}"
         try:
             body = json.loads(raw or b"{}")
         except json.JSONDecodeError:
@@ -191,8 +242,8 @@ class Handler(BaseHTTPRequestHandler):
         # POST /run/<unit>
         if len(parts) == 2 and parts[0] == "run":
             unit = parts[1]
-            if not UNIT_RE.match(unit) or unit not in _read_allowlist(ALLOWLIST_FILE):
-                LOG.warning("refused run for non-allowlisted unit %r", unit[:80])
+            if not allowed_unit(unit):
+                LOG.warning("refused run for non-allowlisted unit %r", safe_for_log(unit))
                 return self._send(403, {"error": "unit not allowlisted"})
             # --no-block: a harvest can run for minutes; the console polls
             # status rather than holding an HTTP request open.
@@ -204,12 +255,20 @@ class Handler(BaseHTTPRequestHandler):
         # POST /rotate/<ENV_VAR>
         if len(parts) == 2 and parts[0] == "rotate":
             env_var = parts[1]
-            if not ENVVAR_RE.match(env_var) or env_var not in _read_allowlist(KEYVAR_FILE):
-                LOG.warning("refused rotate for non-allowlisted var %r", env_var[:80])
+            if (any(not c.isprintable() for c in env_var)
+                    or not ENVVAR_RE.match(env_var)
+                    or env_var not in _read_allowlist(KEYVAR_FILE)):
+                LOG.warning("refused rotate for non-allowlisted var %r", safe_for_log(env_var))
                 return self._send(403, {"error": "variable not allowlisted"})
             value = body.get("value") or ""
             if not isinstance(value, str) or not (8 <= len(value) <= 4096):
                 return self._send(422, {"error": "value must be a string of 8–4096 chars"})
+            if any(c in value for c in "\r\n\x00"):
+                # The secrets file is KEY=value per line. A newline here would
+                # let one rotation silently define a second variable — including
+                # one this service refuses to rotate directly.
+                LOG.warning("refused a rotation value containing a line break")
+                return self._send(422, {"error": "value must not contain line breaks"})
 
             ok, detail = rotate_secret(env_var, value)
             LOG.info("rotated %s ok=%s (%s)", env_var, ok, detail)  # value never logged
@@ -219,7 +278,7 @@ class Handler(BaseHTTPRequestHandler):
             restarted = None
             unit = body.get("restart_unit")
             if unit:
-                if not UNIT_RE.match(str(unit)) or unit not in _read_allowlist(ALLOWLIST_FILE):
+                if not allowed_unit(str(unit)):
                     return self._send(200, {"ok": True, "detail": detail,
                                             "restarted": "refused: unit not allowlisted"})
                 rc, out = run(["systemctl", "restart", unit], timeout=120)

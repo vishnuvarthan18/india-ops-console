@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}{{ code }}{% endblock %}
+{% block crumbs %}<span class="here">{{ code }}</span>{% endblock %}
+
+{% block bare %}
+<div class="login-wrap">
+  <div class="login" style="text-align:center">
+    <h1 style="margin-bottom:var(--sp-2)">{{ code }}</h1>
+    <p class="muted">{{ message }}</p>
+    <a class="btn btn-primary" href="/" style="width:100%">Back to the overview</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block body %}
+<div class="panel" style="margin-top:var(--sp-6)">
+  <div class="empty">
+    {{ icon('alert') }}
+    <h3>{{ heading }}</h3>
+    <p>{{ message }}</p>
+    {% if code == 500 %}
+      <p class="small subtle">The details are in the console's own log:
+        <code class="mono">docker compose logs ops-console</code></p>
+    {% endif %}
+    <div style="display:flex;gap:var(--sp-2);justify-content:center;margin-top:var(--sp-3)">
+      <a class="btn btn-primary" href="/">Overview</a>
+      <a class="btn" href="javascript:history.back()">Go back</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

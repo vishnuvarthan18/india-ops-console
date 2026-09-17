@@ -10,7 +10,7 @@
 {% block head_extra %}{% endblock %}
 </head>
 <body>
-{% if not request.session.get('admin') %}
+{% if not signed_in %}
   {% block bare %}{% endblock %}
 {% else %}
 <a class="skip" href="#main">Skip to content</a>

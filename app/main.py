@@ -17,7 +17,17 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from app import alerting, browse, control, decisions, icons, keys, metrics, queries
-from app.auth import SESSION_KEY, check_login, require_admin
+from app.auth import (
+    EPOCH_KEY,
+    SESSION_KEY,
+    check_login,
+    clear_failures,
+    client_key,
+    lockout_remaining,
+    record_failure,
+    require_admin,
+    session_is_current,
+)
 from app.db import close_pool, execute, open_pool
 from app.settings import get_settings
 
@@ -72,13 +82,36 @@ ADMIN = Depends(require_admin)
 
 
 def page(request: Request, name: str, **ctx) -> HTMLResponse:
-    if request.session.get(SESSION_KEY):
+    """Every template gets `signed_in` from one place, so the chrome a visitor
+    sees can never disagree with what the server will actually serve them."""
+    current = session_is_current(request)
+    if current:
         ctx = {**_nav_counts(), **ctx}
-    return templates.TemplateResponse(request, name, ctx)
+    return templates.TemplateResponse(request, name, {"signed_in": current, **ctx})
+
+
+HTTP_MESSAGES = {
+    403: ("Not permitted",
+          "That action is not on the control service's allowlist. This is a "
+          "deliberate limit, not a fault — see control/units.allow."),
+    404: ("Not found", "There is nothing at that address."),
+    413: ("Too large", "That request was larger than this console accepts."),
+    422: ("That input was refused",
+          "One of the values submitted was not one this console accepts."),
+    503: ("A service is unavailable",
+          "The control service could not be reached. The rest of the console "
+          "is read-only but still working."),
+}
+
+
+def _wants_json(request: Request) -> bool:
+    """JSON endpoints get JSON errors; pages get pages."""
+    return (request.url.path.endswith((".json", ".geojson", ".csv"))
+            or request.url.path == "/healthz")
 
 
 @app.exception_handler(HTTPException)
-async def auth_redirect(request: Request, exc: HTTPException):
+async def http_error(request: Request, exc: HTTPException):
     """An unauthenticated page request goes to the login form rather than a
     bare 401 body — this is a browser app, not an API.
 
@@ -88,7 +121,43 @@ async def auth_redirect(request: Request, exc: HTTPException):
     """
     if exc.status_code == status.HTTP_401_UNAUTHORIZED and request.method == "GET":
         return RedirectResponse("/login", status_code=302)
-    return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+    if _wants_json(request) or request.method != "GET":
+        return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+
+    heading, message = HTTP_MESSAGES.get(
+        exc.status_code, ("Something went wrong", str(exc.detail)))
+    return templates.TemplateResponse(
+        request, "error.html",
+        {"signed_in": session_is_current(request),
+         "code": exc.status_code, "heading": heading,
+         "message": exc.detail if isinstance(exc.detail, str) and exc.status_code == 404 else message,
+         **(_nav_counts() if session_is_current(request) else {})},
+        status_code=exc.status_code,
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_error(request: Request, exc: Exception):
+    """An unexpected failure should say so in the console's own voice, not
+    drop a stack trace or a bare JSON blob in front of the operator.
+
+    The detail goes to the log, never to the page: an error message can carry
+    a connection string or a query fragment.
+    """
+    logger.exception("unhandled error on %s %s", request.method, request.url.path)
+    if _wants_json(request):
+        return JSONResponse({"detail": "internal error"}, status_code=500)
+    try:
+        return templates.TemplateResponse(
+            request, "error.html",
+            {"signed_in": session_is_current(request),
+             "code": 500, "heading": "Something went wrong",
+             "message": "The console hit an unexpected error. It has been logged.",
+             **(_nav_counts() if session_is_current(request) else {})},
+            status_code=500,
+        )
+    except Exception:  # noqa: BLE001 — the error page itself must never fail
+        return JSONResponse({"detail": "internal error"}, status_code=500)
 
 
 # ---------------------------------------------------------------------------
@@ -102,18 +171,43 @@ def healthz() -> dict:
 
 @app.get("/login", response_class=HTMLResponse)
 def login_form(request: Request):
-    if request.session.get(SESSION_KEY):
+    if session_is_current(request):
         return RedirectResponse("/", status_code=302)
+    request.session.clear()
     return page(request, "login.html", error=None)
 
 
 @app.post("/login", response_class=HTMLResponse)
 def login_submit(request: Request, username: str = Form(""), password: str = Form("")):
+    key = client_key(request)
+
+    wait = lockout_remaining(key)
+    if wait:
+        # Refused before the password is even checked, so a locked-out caller
+        # learns nothing from how long the response took.
+        logger.warning("login refused: %s is locked out for another %ds", key, wait)
+        minutes = max(1, (wait + 59) // 60)
+        return page(
+            request, "login.html",
+            error=f"Too many failed attempts. Try again in {minutes} minute"
+                  f"{'' if minutes == 1 else 's'}.",
+        )
+
     if check_login(username, password):
+        clear_failures(key)
+        # A fresh session id on sign-in, so a session cookie captured before
+        # login cannot be reused afterwards.
+        request.session.clear()
         request.session[SESSION_KEY] = username
-        logger.info("admin login succeeded")
+        # get_settings(), not the module-level snapshot taken at import:
+        # session_is_current() reads it fresh, and the two must never
+        # disagree about which epoch is current.
+        request.session[EPOCH_KEY] = get_settings().session_epoch
+        logger.info("admin login succeeded from %s", key)
         return RedirectResponse("/", status_code=302)
-    logger.warning("failed admin login attempt for username=%r", username[:40])
+
+    record_failure(key)
+    logger.warning("failed admin login for username=%r from %s", username[:40], key)
     return page(request, "login.html", error="Wrong username or password.")
 
 
